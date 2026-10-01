@@ -9,6 +9,7 @@
 *.opus
 *.mp4
 *.mov
+*.mkv
 *.pkf
 *.srt
 *.segments.json

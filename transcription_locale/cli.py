@@ -19,12 +19,13 @@ from .audio import ErreurAudio, duree, lire_wav_16k, preparer
 from .diarisation import SEUIL_DEFAUT, ErreurDiarisation, diariser
 from .fusion import attribuer, nombre_de_locuteurs, parts_de_parole, regrouper_tours
 from .modeles import ErreurModele, chemins_modeles, dossier_modeles
+from .reunion import ErreurReunion, basculer, installer
 from .sorties import ecrire_resultats, ecrire_segments, horodatage, lire_segments
 from .transcription import LANGUE_DEFAUT, MODELE_DEFAUT, ErreurTranscription, transcrire
 
 APERCU_TOURS = 8
 APERCU_CARACTERES = 100
-ERREURS = (ErreurAudio, ErreurDiarisation, ErreurModele, ErreurTranscription)
+ERREURS = (ErreurAudio, ErreurDiarisation, ErreurModele, ErreurReunion, ErreurTranscription)
 
 
 class ErreurUsage(Exception):
@@ -143,6 +144,18 @@ def commande_modeles(_args: argparse.Namespace) -> int:
     return 0
 
 
+def commande_reunion(_args: argparse.Namespace) -> int:
+    print(basculer())
+    return 0
+
+
+def commande_raccourci(args: argparse.Namespace) -> int:
+    print("\n".join(installer(dock=not args.sans_dock)))
+    info("Au premier clic sur Réunion, macOS peut demander l'accès au micro et à l'audio "
+         "système pour OBS : accepter, puis recliquer.")
+    return 0
+
+
 def ajouter_options_locuteurs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--seuil", type=reel_positif, default=SEUIL_DEFAUT,
                         help=f"seuil de regroupement des voix (défaut {SEUIL_DEFAUT}) ; "
@@ -184,6 +197,14 @@ def construire_parser() -> argparse.ArgumentParser:
 
     p = commandes.add_parser("modeles", help="télécharge et vérifie les modèles de séparation des voix")
     p.set_defaults(action=commande_modeles)
+
+    p = commandes.add_parser("reunion", help="démarre l'enregistrement OBS d'une réunion, "
+                                             "ou l'arrête et lance la transcription")
+    p.set_defaults(action=commande_reunion)
+
+    p = commandes.add_parser("raccourci", help="prépare OBS et ajoute l'icône Réunion au Dock")
+    p.add_argument("--sans-dock", action="store_true", help="crée l'application sans l'épingler")
+    p.set_defaults(action=commande_raccourci)
     return parser
 
 

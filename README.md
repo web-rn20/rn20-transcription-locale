@@ -45,6 +45,37 @@ transcription-locale transcrire PARTIE1.WAV PARTIE2.WAV PARTIE3.WAV -o conferenc
 
 `--sans-locuteurs` donne le texte seul, et `--langue en` transcrit un enregistrement en anglais.
 
+## Enregistrer une réunion en un clic
+
+Les notes automatiques de Google Meet ou de Teams dépendent de l'abonnement de l'organisateur. Un invité extérieur n'y a pas accès. Une icône Réunion dans le Dock comble ce manque pour n'importe quelle visio : un clic lance l'enregistrement, un second l'arrête et lance la transcription. Une notification signale la fin, et le Finder montre le texte.
+
+L'enregistrement passe par [OBS Studio](https://obsproject.com), qui capte à la fois le son de l'ordinateur (les autres participants, même au casque) et le micro (soi).
+
+```sh
+brew install --cask obs
+```
+
+Ouvrir OBS une première fois, accepter les autorisations demandées (micro, enregistrement de l'écran et audio système), fermer l'assistant, puis quitter OBS. Ensuite :
+
+```sh
+transcription-locale raccourci
+```
+
+La commande crée dans OBS un profil et une collection de scènes « Reunion RN20 », sans toucher aux autres. Elle active aussi le serveur WebSocket d'OBS et pose l'application `~/Applications/Réunion.app` dans le Dock. On peut la relancer sans risque, OBS fermé. `--sans-dock` crée l'application sans l'épingler.
+
+| Emplacement | Contenu |
+|---|---|
+| `~/Movies/Reunions` | Les enregistrements (`Reunion 2026-10-01 14-00-00.mkv`) et leurs transcriptions, côte à côte |
+| `~/Library/Logs/transcription-locale` | Un journal par transcription, à lire si la notification signale un échec |
+
+Rien n'est supprimé automatiquement : les enregistrements restent jusqu'à ce qu'on les efface.
+
+Points d'attention :
+
+- **Prévenir les participants** en début de réunion que l'on enregistre pour le compte rendu. Contrairement aux notes de Meet, l'enregistrement local ne l'annonce à personne.
+- Le serveur WebSocket d'OBS écoute sur le port 4455 de toutes les interfaces réseau. Il est protégé par un mot de passe aléatoire, rangé dans la configuration d'OBS avec des droits réservés à l'utilisateur. Un mot de passe déjà choisi est conservé.
+- Si OBS est déjà ouvert sur un autre profil, le clic le bascule sur « Reunion RN20 ». En fin de réunion, OBS n'est refermé que s'il tourne sur ce profil.
+
 ## Régler la séparation des voix
 
 La séparation repose sur un seuil, la distance entre deux empreintes vocales au-delà de laquelle on considère qu'il s'agit de deux personnes. Un seuil bas éclate une même personne en plusieurs voix ; un seuil haut finit par fondre deux personnes en une. Le bon réglage dépend d'abord du micro.
@@ -86,7 +117,7 @@ git clone https://github.com/web-rn20/rn20-transcription-locale.git ~/.claude/sk
 | Détection de la parole | [pyannote segmentation 3.0](https://huggingface.co/pyannote/segmentation-3.0), export ONNX de [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | MIT |
 | Empreinte vocale | [NVIDIA NeMo TitaNet large](https://huggingface.co/nvidia/speakerverification_en_titanet_large), export ONNX de sherpa-onnx | CC-BY-4.0 |
 
-Les modèles ne sont pas inclus dans ce dépôt. Les deux modèles de séparation des voix sont téléchargés depuis les publications de sherpa-onnx sur GitHub et vérifiés par leur empreinte SHA-256 avant usage. Ils sont rangés dans `~/.cache/rn20-transcription-locale`, ou dans le dossier indiqué par la variable `TRANSCRIPTION_LOCALE_MODELES`. Le code s'appuie sur [mlx-whisper](https://github.com/ml-explore/mlx-examples) (MIT), sherpa-onnx (Apache-2.0) et NumPy (BSD), et appelle [ffmpeg](https://ffmpeg.org) comme programme externe.
+Les modèles ne sont pas inclus dans ce dépôt. Les deux modèles de séparation des voix sont téléchargés depuis les publications de sherpa-onnx sur GitHub et vérifiés par leur empreinte SHA-256 avant usage. Ils sont rangés dans `~/.cache/rn20-transcription-locale`, ou dans le dossier indiqué par la variable `TRANSCRIPTION_LOCALE_MODELES`. Le code s'appuie sur [mlx-whisper](https://github.com/ml-explore/mlx-examples) (MIT), sherpa-onnx (Apache-2.0), NumPy (BSD) et [websockets](https://github.com/python-websockets/websockets) (BSD-3-Clause). Il appelle [ffmpeg](https://ffmpeg.org) et, pour l'enregistrement des réunions, OBS Studio (GPL-2.0) comme programmes externes, sans les embarquer.
 
 ## Contribuer
 

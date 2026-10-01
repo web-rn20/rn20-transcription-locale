@@ -13,6 +13,7 @@ Merci de votre intérêt. Le projet est en cours de développement : une issue a
 | `transcription_locale/modeles.py` | Téléchargement et vérification des modèles de séparation |
 | `transcription_locale/fusion.py` | Attribution d'un locuteur à chaque segment de texte (module pur) |
 | `transcription_locale/sorties.py` | Fichiers texte, SRT et JSON (module pur) |
+| `transcription_locale/reunion.py` | Raccourci Réunion : configuration d'OBS, icône du Dock, pilotage d'OBS par WebSocket local |
 | `SKILL.md` | Instructions du skill Claude Code |
 | `tests/` | Tests unitaires, sans modèle ni réseau |
 
@@ -37,7 +38,7 @@ Sur un entretien de synthèse de ce type, le texte sort sans faute et les deux v
 
 Elles sont vérifiées à chaque revue.
 
-- **L'audio et le texte ne quittent pas la machine.** Le seul accès réseau est le téléchargement des modèles. Tout nouveau modèle a une URL fixe et une empreinte SHA-256 vérifiée avant usage.
+- **L'audio et le texte ne quittent pas la machine.** Le seul accès réseau est le téléchargement des modèles. Le pilotage d'OBS passe par son WebSocket sur `127.0.0.1` et ne transporte aucun audio. Tout nouveau modèle a une URL fixe et une empreinte SHA-256 vérifiée avant usage.
 - **Aucun enregistrement réel dans le dépôt.** Ni audio, ni transcription, ni extrait, même court. Les essais utilisent des voix de synthèse. Le `.gitignore` exclut les formats audio et les fichiers produits.
 - **Les dépendances lourdes se chargent au dernier moment.** `mlx_whisper`, `sherpa_onnx` et `numpy` s'importent dans les fonctions qui les utilisent, pour que les tests et `--help` fonctionnent partout.
 - **Des erreurs qui disent quoi faire.** Une erreur prévisible (fichier absent, ffmpeg manquant, modèle corrompu) produit un message en français qui nomme le fichier en cause, et le code de sortie 2.

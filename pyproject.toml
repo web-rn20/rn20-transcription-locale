@@ -24,6 +24,7 @@ dependencies = [
     "mlx-whisper>=0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "sherpa-onnx>=1.12",
     "numpy>=1.24",
+    "websockets>=13",
 ]
 
 [project.scripts]
@@ -38,3 +39,6 @@ version = { attr = "transcription_locale.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["transcription_locale*"]
+
+[tool.setuptools.package-data]
+transcription_locale = ["ressources/*.icns"]
