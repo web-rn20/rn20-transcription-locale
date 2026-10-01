@@ -1,0 +1,27 @@
+# enregistrements et transcriptions : jamais dans le depot
+*.wav
+*.WAV
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.opus
+*.mp4
+*.mov
+*.pkf
+*.srt
+*.segments.json
+
+# secrets (le depot n'en a aucun, la regle est posee quand meme)
+.env
+.env.*
+
+# Python et systeme
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+.DS_Store

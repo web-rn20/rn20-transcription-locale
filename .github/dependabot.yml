@@ -1,0 +1,23 @@
+# Une PR mensuelle groupee par ecosysteme, 7 jours apres la sortie d'une version.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+      timezone: Europe/Paris
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: monthly
+      timezone: Europe/Paris
+    cooldown:
+      default-days: 7
+    groups:
+      python:
+        patterns: ["*"]

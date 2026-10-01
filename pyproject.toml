@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rn20-transcription-locale"
+dynamic = ["version"]
+description = "Transcription et séparation des voix en local sur Mac Apple Silicon, sans compte ni clé d'API."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "RN20", email = "bonjour@rn20.digital" }]
+keywords = ["transcription", "diarisation", "whisper", "mlx", "français", "local"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Natural Language :: French",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "mlx-whisper>=0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sherpa-onnx>=1.12",
+    "numpy>=1.24",
+]
+
+[project.scripts]
+transcription-locale = "transcription_locale.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/web-rn20/rn20-transcription-locale"
+Issues = "https://github.com/web-rn20/rn20-transcription-locale/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "transcription_locale.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["transcription_locale*"]
