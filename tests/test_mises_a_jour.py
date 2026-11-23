@@ -41,7 +41,9 @@ class Release(unittest.TestCase):
 class Installation(unittest.TestCase):
     def test_commande_figee_sur_l_etiquette(self):
         commande = maj.commande_installation(maj.Version("v0.3.0"), "/u/uv")
-        self.assertEqual(commande, ["/u/uv", "tool", "install", "--reinstall",
+        # seul le paquet est reinstalle, pas tout l'environnement sous l'enregistreur qui tourne
+        self.assertEqual(commande, ["/u/uv", "tool", "install", "--reinstall-package",
+                                    "rn20-transcription-locale",
                                     "git+https://github.com/web-rn20/rn20-transcription-locale@v0.3.0"])
 
     def test_commande_refusee_si_etiquette_invalide(self):
@@ -76,6 +78,31 @@ class Verification(unittest.TestCase):
         maj.choisir(True)
         with mock.patch.object(maj, "interroger_github", side_effect=OSError("hors ligne")):
             self.assertIsNone(maj.disponible(1000.0))
+
+    def test_un_echec_compte_aussi_dans_la_limite_du_jour(self):
+        maj.choisir(True)
+        for erreur in (OSError("hors ligne"), ValueError("JSON"), RuntimeError("HTTP 404")):
+            with self.subTest(erreur=erreur), \
+                    mock.patch.object(maj, "interroger_github", side_effect=erreur) as github:
+                maj.fichier_cache().unlink(missing_ok=True)
+                self.assertIsNone(maj.disponible(1000.0))
+                self.assertIsNone(maj.disponible(1000.0 + 3600))
+                self.assertEqual(github.call_count, 1)
+
+    def test_un_echec_garde_la_derniere_version_connue(self):
+        maj.choisir(True)
+        with mock.patch.object(maj, "interroger_github", return_value={"tag_name": "v99.0.0"}):
+            maj.disponible(1000.0)
+        with mock.patch.object(maj, "interroger_github", side_effect=OSError("hors ligne")):
+            self.assertEqual(maj.disponible(1000.0 + maj.INTERVALLE + 1).etiquette, "v99.0.0")
+
+    def test_cache_abime_sans_erreur(self):
+        maj.choisir(True)
+        for contenu in ("[]", '"x"', "{", '{"verifie": "hier"}', '{"etiquette": 3, "verifie": 1000}'):
+            with self.subTest(contenu=contenu), \
+                    mock.patch.object(maj, "interroger_github", return_value={"tag_name": "v0.0.1"}):
+                maj.fichier_cache().write_text(contenu, encoding="utf-8")
+                self.assertIsNone(maj.disponible(1000.0))
 
     def test_version_installee_a_jour(self):
         maj.choisir(True)

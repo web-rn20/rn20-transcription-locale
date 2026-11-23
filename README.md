@@ -99,7 +99,9 @@ transcription-locale raccourci --mises-a-jour       # activer
 transcription-locale raccourci --sans-mises-a-jour  # désactiver
 ```
 
-Une fois activée, Réunion demande au plus une fois par jour à l'API publique de GitHub la dernière release du dépôt. Cette requête ne transmet ni audio, ni texte, ni identifiant. Une version plus récente apparaît dans le menu de la pilule une fois la transcription prête, avec « Installer la version… ». Rien ne s'installe sans ce clic, ni pendant un enregistrement ou une transcription. Seules les releases publiées sont proposées, jamais du code en cours de développement. L'application Réunion n'est pas refaite, et l'autorisation d'enregistrer tient. Le journal `mise-a-jour.log` garde la trace de chaque installation.
+Une fois activée, Réunion demande au plus une fois par jour à l'API publique de GitHub la dernière release du dépôt. Cette requête ne transmet ni audio, ni texte, ni identifiant. Une version plus récente apparaît dans le menu de la pilule une fois la transcription prête, avec « Installer la version… ». Rien ne s'installe sans ce clic, ni pendant un enregistrement ou une transcription. Seules les releases publiées sont proposées, jamais du code en cours de développement. L'application Réunion n'est pas refaite, et l'autorisation d'enregistrer tient. Le journal `mise-a-jour.log` garde la trace de chaque installation. Une mise à jour ratée ou annulée laisse la version installée en place et la transcription accessible.
+
+Ce que ce choix suppose : l'installation suit l'étiquette de version publiée sur GitHub (`v0.3.0` par exemple). Les étiquettes `v*` sont protégées sur le dépôt, seuls ses administrateurs peuvent les créer ou les déplacer. Activer l'option revient donc à faire confiance au dépôt et au compte GitHub qui le publie, comme pour une installation à la main ; une étiquette déplacée par un tiers qui aurait pris la main sur le dépôt s'installerait au clic suivant. Sans cette confiance, garder l'option désactivée et installer à la main après avoir lu la release.
 
 ## Régler la séparation des voix
 

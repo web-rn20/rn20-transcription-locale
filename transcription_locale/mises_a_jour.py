@@ -27,6 +27,7 @@ from .reunion import dossier_etat
 DEPOT = "web-rn20/rn20-transcription-locale"
 API_RELEASE = f"https://api.github.com/repos/{DEPOT}/releases/latest"
 SOURCE = f"git+https://github.com/{DEPOT}"
+PAQUET = "rn20-transcription-locale"
 INTERVALLE = 24 * 3600
 DELAI_RESEAU = 5.0
 ETIQUETTE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
@@ -85,7 +86,10 @@ def lire_release(reponse: dict) -> Optional[Version]:
 def commande_installation(version: Version, uv: str) -> list[str]:
     if decoder_etiquette(version.etiquette) is None:  # deja filtre, verifie a nouveau ici
         raise ValueError(f"étiquette de version invalide : {version.etiquette!r}")
-    return [uv, "tool", "install", "--reinstall", f"{SOURCE}@{version.etiquette}"]
+    # --reinstall-package : seul le code de l'outil est remplace, en quelques millisecondes.
+    # --reinstall reconstruirait tout l'environnement (mlx compris) pendant plusieurs minutes,
+    # sous l'enregistreur qui tourne et sous l'icone du Dock qui le relance.
+    return [uv, "tool", "install", "--reinstall-package", PAQUET, f"{SOURCE}@{version.etiquette}"]
 
 
 def cache_frais(cache: dict, maintenant: float, intervalle: float = INTERVALLE) -> bool:
@@ -127,15 +131,19 @@ def disponible(maintenant: Optional[float] = None) -> Optional[Version]:
         cache = json.loads(fichier_cache().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         cache = {}
+    if not isinstance(cache, dict):  # fichier abime ou modifie a la main
+        cache = {}
     if not cache_frais(cache, maintenant):
         try:
             release = lire_release(interroger_github())
-        except Exception as e:  # reseau, JSON, reponse inattendue
+            cache = {"verifie": maintenant,
+                     "etiquette": release.etiquette if release else None,
+                     "notes": release.notes if release else ""}
+        except Exception as e:  # reseau, JSON, limite de GitHub, aucune release (404)
             print(f"vérification des mises à jour impossible : {e}", flush=True)
-            return None
-        cache = {"verifie": maintenant,
-                 "etiquette": release.etiquette if release else None,
-                 "notes": release.notes if release else ""}
+            # l'echec compte aussi : au plus une requete par jour, meme hors ligne. La
+            # derniere version connue reste proposee.
+            cache = {**cache, "verifie": maintenant}
         try:
             fichier_cache().parent.mkdir(parents=True, exist_ok=True)
             fichier_cache().write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")

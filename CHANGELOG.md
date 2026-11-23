@@ -2,10 +2,10 @@
 
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/). Tant qu'il reste en 0.x, les options et le format des fichiers produits peuvent changer d'une version à l'autre.
 
-## Non publié
+## 0.3.0 (2026-11-23)
 
 - Mise à jour au clic, optionnelle (`transcription-locale raccourci --mises-a-jour`) : une nouvelle release apparaît dans le menu de Réunion une fois la transcription prête, et s'installe sur un clic. Une requête par jour au plus vers l'API publique de GitHub, sans donnée envoyée. Désactivée par défaut.
-- Correction : une erreur que macOS signale parfois après la fin de l'enregistrement (ReplayKit -5814) ne fait plus passer au gris une réunion déjà transcrite.
+- Correction : une erreur que macOS signale parfois après la fin de l'enregistrement (ReplayKit -5814) ne fait plus passer au gris une réunion déjà transcrite, et n'empêche plus la transcription quand elle survient juste après l'arrêt.
 
 ## 0.2.0 (2026-11-23)
 
