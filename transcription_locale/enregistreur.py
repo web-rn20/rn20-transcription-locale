@@ -31,6 +31,8 @@ from . import reunion
 from . import badge
 
 REGLAGES = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+REFUS_TCC = -3801  # SCStreamErrorUserDeclined : l'autorisation manque
+DELAI_FINALISATION = 60.0
 COULEUR_ETAT = {"preparation": "attente", "enregistrement": "enregistrement",
                 "finalisation": "attente", "transcription": "attente",
                 "prete": "prete", "echec": "echec"}
@@ -54,7 +56,7 @@ class Delegue(Foundation.NSObject):
                                   f"{erreur.localizedDescription()}")
 
     def recordingOutputDidFinishRecording_(self, _sortie):
-        callAfter(self.app.transcrire)
+        callAfter(self.app.fichier_termine)
 
 
 class Enregistreur(rumps.App):
@@ -63,7 +65,7 @@ class Enregistreur(rumps.App):
         self.etat = "preparation"
         self.erreur = ""
         self.reglages = False
-        self.debut = self.debut_tr = 0.0
+        self.debut = self.debut_tr = self.debut_fin = 0.0
         self.flux = self.sortie = None
         self.transcription: Optional[subprocess.Popen] = None
         self.ligne_duree: Optional[rumps.MenuItem] = None
@@ -161,6 +163,9 @@ class Enregistreur(rumps.App):
             self.ligne_duree.title = self.libelle_duree()
         if self.etat == "enregistrement":
             self.poser_badge()  # la duree defile dans la pilule
+        if self.etat == "finalisation" and time.time() - self.debut_fin > DELAI_FINALISATION:
+            self.echec("L'enregistrement ne s'est pas terminé correctement. Le fichier est "
+                       "peut-être incomplet, dans le dossier des réunions.")
         if self.etat == "transcription" and self.transcription.poll() is not None:
             code = self.transcription.returncode
             log("transcription terminée, code", code)
@@ -190,6 +195,8 @@ class Enregistreur(rumps.App):
                                     else reunion.dossier_journaux() / "reunion.log")])
 
     def fermer(self, _item=None) -> None:
+        # quit_application quitte sans repasser par Python : on libere le PID avant
+        liberer_pid()
         rumps.quit_application()
 
     # --- capture ----------------------------------------------------------------------------
@@ -209,9 +216,14 @@ class Enregistreur(rumps.App):
                    "Réunion, puis recliquer sur Réunion dans le Dock.", reglages=True)
 
     def contenu(self, contenu, erreur) -> None:
+        if erreur is not None and erreur.code() == REFUS_TCC:
+            self.refus()
+            return
         if erreur is not None or contenu is None or not contenu.displays():
             log("contenu partageable indisponible :", erreur)
-            self.refus()
+            self.echec("Impossible de préparer l'enregistrement : "
+                       + (erreur.localizedDescription() if erreur is not None
+                          else "aucun écran disponible."))
             return
         filtre = SCK.SCContentFilter.alloc().initWithDisplay_excludingWindows_(
             contenu.displays()[0], [])
@@ -251,8 +263,23 @@ class Enregistreur(rumps.App):
     def arreter(self, _item=None) -> None:
         if self.etat != "enregistrement":
             return
+        self.debut_fin = time.time()
         self.changer("finalisation")
-        self.flux.stopCaptureWithCompletionHandler_(lambda e: log("capture arrêtée", e or ""))
+        self.flux.stopCaptureWithCompletionHandler_(lambda e: callAfter(self.capture_arretee, e))
+
+    def capture_arretee(self, erreur) -> None:
+        if erreur is not None and self.etat == "finalisation":
+            log("echec de l'arret :", erreur)
+            self.echec(f"L'arrêt de l'enregistrement a échoué : {erreur.localizedDescription()}")
+        else:
+            log("capture arrêtée")
+
+    def fichier_termine(self) -> None:
+        # un echec deja signale (ou un arret qui n'en finit pas) ne lance pas de transcription
+        if self.etat in ("enregistrement", "finalisation"):
+            self.transcrire()
+        else:
+            log("fichier terminé ignoré, état :", self.etat)
 
     def journal_transcription(self) -> pathlib.Path:
         return reunion.dossier_journaux() / f"{self.video.stem}.log"
@@ -273,32 +300,47 @@ class Enregistreur(rumps.App):
 
     def signal_dock(self) -> None:
         log("clic sur l'icône du Dock, état :", self.etat)
+        messages = {
+            "preparation": "Démarrage en cours, le badge passera au rouge dans un instant.",
+            "finalisation": "Enregistrement en cours d'écriture, la transcription va suivre.",
+            "transcription": "Transcription en cours : un nouvel enregistrement pourra "
+                             "démarrer quand elle sera prête.",
+        }
         if self.etat == "enregistrement":
             self.arreter()
         elif self.etat in ("prete", "echec"):
             self.fermer()
         else:
-            reunion.notifier("Transcription en cours : un nouvel enregistrement pourra "
-                             "démarrer quand elle sera prête.")
+            reunion.notifier(messages[self.etat])
+
+
+def liberer_pid() -> None:
+    pid = reunion.fichier_pid()
+    try:
+        if pid.read_text().strip() == str(os.getpid()):
+            pid.unlink()
+    except OSError:
+        pass
 
 
 def main() -> int:
+    # application de barre des menus : sans cela, le menu s'ouvre mais reste invisible
+    AppKit.NSApplication.sharedApplication().setActivationPolicy_(
+        AppKit.NSApplicationActivationPolicyAccessory)
+    app = Enregistreur()
+    # le gestionnaire Python tourne entre deux tics de l'horloge, sur le fil principal.
+    # Il est pose AVANT d'ecrire le PID : la bascule n'envoie le signal qu'a un enregistreur
+    # qui sait le recevoir (par defaut, SIGUSR1 tue le processus).
+    signal.signal(signal.SIGUSR1, lambda *_: callAfter(app.signal_dock))
     pid = reunion.fichier_pid()
     pid.parent.mkdir(parents=True, exist_ok=True)
     pid.write_text(str(os.getpid()))
     try:
-        # application de barre des menus : sans cela, le menu s'ouvre mais reste invisible
-        AppKit.NSApplication.sharedApplication().setActivationPolicy_(
-            AppKit.NSApplicationActivationPolicyAccessory)
-        app = Enregistreur()
-        # le gestionnaire Python tourne entre deux tics de l'horloge, sur le fil principal
-        signal.signal(signal.SIGUSR1, lambda *_: callAfter(app.signal_dock))
         rumps.Timer(lambda t: (t.stop(), app.poser_badge(), app.demarrer()), 0.1).start()
         log("enregistreur lancé :", app.video.name)
         app.run()
     finally:
-        if pid.is_file() and pid.read_text().strip() == str(os.getpid()):
-            pid.unlink()
+        liberer_pid()
     return 0
 
 

@@ -17,6 +17,7 @@ Aucun audio ne quitte la machine.
 from __future__ import annotations
 
 import datetime
+import fcntl
 import os
 import pathlib
 import platform
@@ -36,6 +37,7 @@ MODULE_ENREGISTREUR = "transcription_locale.enregistreur"
 MACOS_MINIMUM = (15, 0)
 LARGEUR_MENU = 40
 DELAI_FERMETURE = 3.0
+DELAI_DEMARRAGE = 20.0  # imports PyObjC compris
 EXTENSION_AUDIO = ".m4a"
 USAGE_MICRO = "Réunion enregistre votre micro pendant une visio, pour la transcrire sur ce Mac."
 
@@ -58,8 +60,17 @@ def dossier_journaux() -> pathlib.Path:
     return pathlib.Path.home() / "Library" / "Logs" / "transcription-locale"
 
 
+def dossier_etat() -> pathlib.Path:
+    return pathlib.Path.home() / "Library" / "Application Support" / "transcription-locale"
+
+
 def fichier_pid() -> pathlib.Path:
-    return pathlib.Path.home() / "Library" / "Application Support" / "transcription-locale" / "reunion.pid"
+    """Ecrit par l'enregistreur une fois pret a recevoir le signal du Dock."""
+    return dossier_etat() / "reunion.pid"
+
+
+def fichier_verrou() -> pathlib.Path:
+    return dossier_etat() / "bascule.lock"
 
 
 # --- fonctions pures ------------------------------------------------------------------------
@@ -96,9 +107,17 @@ def chaine_applescript(texte: str) -> str:
 
 
 def script_applet(python: str) -> str:
-    """AppleScript de l'icone du Dock : bascule, et affiche l'erreur si la commande echoue."""
-    commande = (f'"export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; " & quoted form of '
-                f'{chaine_applescript(python)} & " -m transcription_locale reunion"')
+    """AppleScript de l'icone du Dock : bascule, et affiche l'erreur si la commande echoue.
+
+    La commande transcription-locale du PATH passe en premier : l'application n'est jamais
+    refaite (elle perdrait son autorisation), elle ne doit donc pas dependre d'un interpreteur
+    fige. Le Python de l'installation ne sert que de secours.
+    """
+    shell = ('export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; '
+             'if command -v transcription-locale >/dev/null 2>&1; '
+             'then exec transcription-locale reunion; else exec ')
+    commande = (f'{chaine_applescript(shell)} & quoted form of {chaine_applescript(python)} & '
+                f'" -m transcription_locale reunion; fi"')
     return "\n".join([
         "on run",
         "\ttry",
@@ -121,6 +140,16 @@ def info_app(info: dict) -> dict:
     info["CFBundleDisplayName"] = TITRE
     info["NSMicrophoneUsageDescription"] = USAGE_MICRO
     return info
+
+
+def commande_extraction(video: str, audio: str, nb_pistes: int) -> list[str]:
+    """ffmpeg : le son seul, sans la video. Plusieurs pistes (ordinateur et micro separes)
+    sont mixees en une, pour que personne ne manque a la transcription."""
+    debut = ["ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-i", video, "-vn"]
+    if nb_pistes <= 1:
+        return debut + ["-c:a", "copy", audio]
+    return debut + ["-filter_complex", f"amix=inputs={nb_pistes}:normalize=0",
+                    "-c:a", "aac", "-b:a", "160k", audio]
 
 
 def urls_dock(app: pathlib.Path) -> list[str]:
@@ -176,14 +205,28 @@ def enregistreur_actif() -> Optional[int]:
     return pid if MODULE_ENREGISTREUR in commande else None
 
 
-def lancer_enregistreur() -> None:
-    """Enregistreur detache : l'icone du Dock rend la main tout de suite."""
+def lancer_enregistreur(delai: float = DELAI_DEMARRAGE) -> bool:
+    """Enregistreur detache, puis attente qu'il soit pret (fichier PID ecrit). Faux si
+    l'attente depasse le delai : il demarre encore, ou il a echoue (voir reunion.log)."""
     journaux = dossier_journaux()
     journaux.mkdir(parents=True, exist_ok=True)
-    with open(journaux / "reunion.log", "a", encoding="utf-8") as sortie:
-        subprocess.Popen([sys.executable, "-m", MODULE_ENREGISTREUR],
-                         stdin=subprocess.DEVNULL, stdout=sortie, stderr=subprocess.STDOUT,
-                         start_new_session=True, env=environnement())
+    try:
+        with open(journaux / "reunion.log", "a", encoding="utf-8") as sortie:
+            processus = subprocess.Popen(
+                [sys.executable, "-m", MODULE_ENREGISTREUR], stdin=subprocess.DEVNULL,
+                stdout=sortie, stderr=subprocess.STDOUT, start_new_session=True,
+                env=environnement())
+    except OSError as e:
+        raise ErreurReunion(f"lancement de l'enregistreur impossible : {e}") from e
+    fin = time.monotonic() + delai
+    while time.monotonic() < fin:
+        if enregistreur_actif() == processus.pid:
+            return True
+        if processus.poll() is not None:
+            raise ErreurReunion(f"l'enregistreur s'est arrêté au démarrage : voir "
+                                f"{journaux / 'reunion.log'}")
+        time.sleep(0.1)
+    return False
 
 
 def attendre_fin(pid: int, delai: float = DELAI_FERMETURE) -> bool:
@@ -198,17 +241,22 @@ def attendre_fin(pid: int, delai: float = DELAI_FERMETURE) -> bool:
 
 
 def basculer() -> str:
+    """Un seul clic a la fois : un double clic attend la fin du premier, qui a laisse
+    l'enregistreur pret a recevoir le signal. Jamais deux enregistreurs en meme temps."""
     verifier_macos()
-    pid = enregistreur_actif()
-    if pid is None:
-        lancer_enregistreur()
-        return "Démarrage de l'enregistrement."
-    os.kill(pid, signal.SIGUSR1)
-    # l'enregistreur se ferme s'il n'avait plus rien a faire (transcription prete ou echec)
-    if attendre_fin(pid):
-        lancer_enregistreur()
-        return "Démarrage d'un nouvel enregistrement."
-    return "Demande transmise à l'enregistreur en cours."
+    dossier_etat().mkdir(parents=True, exist_ok=True)
+    with open(fichier_verrou(), "w") as verrou:
+        fcntl.flock(verrou, fcntl.LOCK_EX)
+        pid = enregistreur_actif()
+        if pid is None:
+            return ("Démarrage de l'enregistrement." if lancer_enregistreur()
+                    else "Démarrage en cours.")
+        os.kill(pid, signal.SIGUSR1)
+        # l'enregistreur se ferme s'il n'avait plus rien a faire (transcription prete ou echec)
+        if attendre_fin(pid):
+            return ("Démarrage d'un nouvel enregistrement." if lancer_enregistreur()
+                    else "Démarrage en cours.")
+        return "Demande transmise à l'enregistreur en cours."
 
 
 # --- installation ---------------------------------------------------------------------------
@@ -239,7 +287,12 @@ def preparer_app(app: pathlib.Path) -> None:
         info = plistlib.load(f)
     with open(info_plist, "wb") as f:
         plistlib.dump(info_app(info), f)
-    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], capture_output=True)
+    signature = subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)],
+                               capture_output=True, text=True)
+    if signature.returncode != 0:
+        # sans signature valide, macOS ne retient pas l'autorisation : refaire au prochain passage
+        (app / "Contents" / "Info.plist").unlink(missing_ok=True)
+        raise ErreurReunion(f"signature de {app} impossible : {signature.stderr.strip()}")
     subprocess.run(["touch", str(app)], capture_output=True)
 
 
@@ -260,11 +313,12 @@ def installer(dock: bool = True, reconstruire: bool = False) -> list[str]:
     faits.append(f"Enregistrements : {dossier_enregistrements()}")
 
     app = chemin_app()
-    if app_en_place(app) and not reconstruire:
-        faits.append(f"Application déjà en place, autorisations conservées : {app}")
-    else:
+    reconstruit = not app_en_place(app) or reconstruire
+    if reconstruit:
         creer_app(app)
         faits.append(f"Application : {app}")
+    else:
+        faits.append(f"Application déjà en place, autorisations conservées : {app}")
 
     if dock:
         actuelles = subprocess.run(["defaults", "read", "com.apple.dock", "persistent-apps"],
@@ -272,26 +326,42 @@ def installer(dock: bool = True, reconstruire: bool = False) -> list[str]:
         if dock_contient(actuelles, app):
             faits.append("Déjà dans le Dock")
         else:
-            subprocess.run(["defaults", "write", "com.apple.dock", "persistent-apps",
-                            "-array-add", entree_dock(app)], check=True)
+            ajout = subprocess.run(["defaults", "write", "com.apple.dock", "persistent-apps",
+                                    "-array-add", entree_dock(app)], capture_output=True, text=True)
+            if ajout.returncode != 0:
+                raise ErreurReunion(f"ajout au Dock impossible : {ajout.stderr.strip()}")
             faits.append("Ajoutée au Dock")
-        subprocess.run(["killall", "Dock"], capture_output=True)  # recharge aussi l'icone
+        if not dock_contient(actuelles, app) or reconstruit:
+            subprocess.run(["killall", "Dock"], capture_output=True)  # recharge aussi l'icone
     return faits
 
 
 # --- apres l'enregistrement (processus detache, lance par l'enregistreur) --------------------
 
+def nombre_de_pistes_audio(video: pathlib.Path) -> int:
+    sonde = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a",
+                            "-show_entries", "stream=index", "-of", "csv=p=0", str(video)],
+                           capture_output=True, text=True, env=environnement())
+    return len(sonde.stdout.split()) if sonde.returncode == 0 else 1
+
+
 def extraire_audio(video: pathlib.Path) -> pathlib.Path:
     """Garde le seul son : ScreenCaptureKit impose une piste video (l'ecran en vignette),
     qui n'a rien a faire sur le disque. En cas d'echec, on transcrit la video telle quelle."""
     audio = video.with_suffix(EXTENSION_AUDIO)
-    copie = subprocess.run(["ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-i", str(video),
-                            "-vn", "-c:a", "copy", str(audio)], capture_output=True, text=True,
-                           env=environnement())
-    if copie.returncode == 0 and audio.is_file() and audio.stat().st_size > 0:
+    try:
+        pistes = nombre_de_pistes_audio(video)
+        print(f"{pistes} piste(s) audio dans {video.name}", file=sys.stderr)
+        copie = subprocess.run(commande_extraction(str(video), str(audio), pistes),
+                               capture_output=True, text=True, env=environnement())
+        erreur = copie.stderr.strip()
+        reussi = copie.returncode == 0 and audio.is_file() and audio.stat().st_size > 0
+    except OSError as e:  # ffmpeg ou ffprobe absent
+        erreur, reussi = f"{e} (brew install ffmpeg)", False
+    if reussi:
         video.unlink()
         return audio
-    print(f"extraction du son impossible, transcription de {video.name} : {copie.stderr.strip()}",
+    print(f"extraction du son impossible, transcription de {video.name} : {erreur}",
           file=sys.stderr)
     audio.unlink(missing_ok=True)
     return video

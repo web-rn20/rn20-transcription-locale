@@ -9,11 +9,13 @@ MODELE_DEFAUT = "mlx-community/whisper-large-v3-mlx"
 LANGUE_DEFAUT = "fr"
 
 
-# Generiques de sous-titrage appris par Whisper, qu'il recite sur les silences.
-# Seules ces formules sont retirees : une vraie phrase n'est jamais filtree.
+# Generiques de sous-titrage appris par Whisper, qu'il recite sur les silences. Retires
+# seulement quand ils forment une phrase entiere en fin de segment : une phrase qui parle
+# de sous-titres au milieu d'une autre n'est pas touchee.
 HALLUCINATIONS = re.compile(
-    r"sous-titr(?:age|es|é)[^.!?]*?(?:\bST'? ?\d+|amara|soustitreur|radio-canada|soci[ée]t[ée] radio)"
-    r".*$",  # le generique termine toujours le segment
+    r"(?:^|(?<=[.!?]))\s*sous-titr(?:age|es|é)[^.!?]*?"
+    r"(?:\bST'? ?\d+|amara(?:\.org)?|soustitreur(?:\.com)?|radio-canada|soci[ée]t[ée] radio)"
+    r"[^.!?]*[.!?]?\s*$",
     re.IGNORECASE)
 
 

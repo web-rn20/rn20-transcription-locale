@@ -43,15 +43,32 @@ class Hallucinations(unittest.TestCase):
 
     def test_garde_les_vraies_phrases(self):
         for phrase in ("On parle du sous-titrage des vidéos de l'AG.",
-                       "Merci d'avoir participé.", "Le site ST 501 est en ligne"):
+                       "Merci d'avoir participé.", "Le site ST 501 est en ligne",
+                       "On a demandé les sous-titres à Amara pour la vidéo de l'AG, "
+                       "et ensuite on passe au budget."):
             self.assertEqual(sans_hallucinations(phrase), phrase)
 
 
+class Extraction(unittest.TestCase):
+    def test_une_piste_copiee_sans_reencodage(self):
+        commande = reunion.commande_extraction("r.mov", "r.m4a", 1)
+        self.assertEqual(commande[-3:], ["-c:a", "copy", "r.m4a"])
+        self.assertIn("-vn", commande)
+
+    def test_plusieurs_pistes_mixees(self):
+        commande = reunion.commande_extraction("r.mov", "r.m4a", 2)
+        self.assertIn("amix=inputs=2:normalize=0", commande)
+        self.assertNotIn("copy", commande)
+        self.assertEqual(commande[-1], "r.m4a")
+
+
 class Application(unittest.TestCase):
-    def test_applet_echappe_le_chemin_python(self):
+    def test_applet_passe_par_la_commande_du_path(self):
         script = reunion.script_applet('/Users/x/a "b"\\py')
-        self.assertIn('quoted form of "/Users/x/a \\"b\\"\\\\py"', script)
-        self.assertIn("-m transcription_locale reunion", script)
+        self.assertIn("command -v transcription-locale", script)
+        self.assertIn("exec transcription-locale reunion", script)
+        self.assertIn('quoted form of "/Users/x/a \\"b\\"\\\\py"', script)  # secours
+        self.assertIn("-m transcription_locale reunion; fi", script)
         self.assertIn("on error erreur", script)
 
     def test_info_plist_nomme_l_application(self):
