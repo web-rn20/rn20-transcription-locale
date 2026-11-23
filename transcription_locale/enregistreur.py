@@ -52,8 +52,7 @@ class Delegue(Foundation.NSObject):
 
     def recordingOutput_didFailWithError_(self, _sortie, erreur):
         log("echec de l'enregistrement :", erreur)
-        callAfter(self.app.echec, f"L'enregistrement s'est interrompu : "
-                                  f"{erreur.localizedDescription()}")
+        callAfter(self.app.capture_interrompue, erreur.localizedDescription())
 
     def recordingOutputDidFinishRecording_(self, _sortie):
         callAfter(self.app.fichier_termine)
@@ -339,6 +338,14 @@ class Enregistreur(rumps.App):
             self.echec(f"L'arrêt de l'enregistrement a échoué : {erreur.localizedDescription()}")
         else:
             log("capture arrêtée")
+
+    def capture_interrompue(self, description: str) -> None:
+        # macOS signale parfois une erreur (ReplayKit -5814) une fois le fichier deja ecrit :
+        # elle ne concerne plus l'enregistrement et ne doit pas griser une reunion transcrite.
+        if self.etat in ("preparation", "enregistrement", "finalisation"):
+            self.echec(f"L'enregistrement s'est interrompu : {description}")
+        else:
+            log("erreur tardive ignorée, état :", self.etat)
 
     def fichier_termine(self) -> None:
         # un echec deja signale (ou un arret qui n'en finit pas) ne lance pas de transcription
