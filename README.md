@@ -84,6 +84,23 @@ Points d'attention :
 - Whisper invente parfois une phrase sur un long silence. Les génériques de sous-titrage (« Sous-titrage ST' 501 », « Sous-titres réalisés par la communauté d'Amara.org ») sont retirés automatiquement. D'autres formules, comme « Merci d'avoir regardé cette vidéo », restent, car elles peuvent être prononcées pour de vrai.
 - Une version précédente passait par OBS Studio. Si elle a été installée, OBS n'est plus nécessaire : on peut le désinstaller, avec son profil « Reunion RN20 ».
 
+### Mises à jour
+
+Pour être prévenu d'une nouvelle version, s'abonner aux releases du dépôt : sur GitHub, Watch > Custom > Releases. Pour l'installer à la main :
+
+```sh
+uv tool install --reinstall git+https://github.com/web-rn20/rn20-transcription-locale
+```
+
+On peut aussi laisser Réunion la proposer, ce qui reste désactivé par défaut :
+
+```sh
+transcription-locale raccourci --mises-a-jour       # activer
+transcription-locale raccourci --sans-mises-a-jour  # désactiver
+```
+
+Une fois activée, Réunion demande au plus une fois par jour à l'API publique de GitHub la dernière release du dépôt. Cette requête ne transmet ni audio, ni texte, ni identifiant. Une version plus récente apparaît dans le menu de la pilule une fois la transcription prête, avec « Installer la version… ». Rien ne s'installe sans ce clic, ni pendant un enregistrement ou une transcription. Seules les releases publiées sont proposées, jamais du code en cours de développement. L'application Réunion n'est pas refaite, et l'autorisation d'enregistrer tient. Le journal `mise-a-jour.log` garde la trace de chaque installation.
+
 ## Régler la séparation des voix
 
 La séparation repose sur un seuil, la distance entre deux empreintes vocales au-delà de laquelle on considère qu'il s'agit de deux personnes. Un seuil bas éclate une même personne en plusieurs voix ; un seuil haut finit par fondre deux personnes en une. Le bon réglage dépend d'abord du micro.
