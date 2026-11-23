@@ -38,5 +38,6 @@ jobs:
         run: |
           transcription-locale --version
           python -c "import mlx_whisper, sherpa_onnx, numpy"
+          python -c "import transcription_locale.enregistreur, transcription_locale.badge"
       - name: Télécharger et vérifier les modèles de séparation des voix
         run: transcription-locale modeles

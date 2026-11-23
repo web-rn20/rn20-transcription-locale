@@ -1,10 +1,28 @@
 """Transcription avec MLX-Whisper, sur le GPU d'un Mac Apple Silicon."""
 from __future__ import annotations
 
+import re
+
 from .fusion import Segment
 
 MODELE_DEFAUT = "mlx-community/whisper-large-v3-mlx"
 LANGUE_DEFAUT = "fr"
+
+
+# Generiques de sous-titrage appris par Whisper, qu'il recite sur les silences. Retires
+# seulement quand ils forment une phrase entiere en fin de segment : une phrase qui parle
+# de sous-titres au milieu d'une autre n'est pas touchee.
+HALLUCINATIONS = re.compile(
+    r"(?:^|(?<=[.!?]))\s*sous-titr(?:age|es|é)[^.!?]*?"
+    r"(?:\bST'? ?\d+|amara(?:\.org)?|soustitreur(?:\.com)?|radio-canada|soci[ée]t[ée] radio)"
+    r"[^.!?]*[.!?]?\s*$",
+    re.IGNORECASE)
+
+
+def sans_hallucinations(texte: str) -> str:
+    if not HALLUCINATIONS.search(texte):
+        return texte
+    return re.sub(r"\s{2,}", " ", HALLUCINATIONS.sub("", texte)).strip()
 
 
 class ErreurTranscription(Exception):
@@ -29,7 +47,7 @@ def transcrire(wav: str, modele: str = MODELE_DEFAUT, langue: str = LANGUE_DEFAU
         condition_on_previous_text=False, verbose=False)
     segments = []
     for s in resultat["segments"]:
-        texte = s["text"].strip()
+        texte = sans_hallucinations(s["text"].strip())
         if texte:
             segments.append(Segment(float(s["start"]), float(s["end"]), texte))
     return segments

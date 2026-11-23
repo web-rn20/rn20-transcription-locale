@@ -13,6 +13,9 @@ Merci de votre intérêt. Le projet est en cours de développement : une issue a
 | `transcription_locale/modeles.py` | Téléchargement et vérification des modèles de séparation |
 | `transcription_locale/fusion.py` | Attribution d'un locuteur à chaque segment de texte (module pur) |
 | `transcription_locale/sorties.py` | Fichiers texte, SRT et JSON (module pur) |
+| `transcription_locale/reunion.py` | Raccourci Réunion : application du Dock, bascule, extraction du son après l'enregistrement (sans PyObjC) |
+| `transcription_locale/enregistreur.py` | Enregistreur ScreenCaptureKit, badge et menu de la barre des menus (PyObjC, macOS seulement) |
+| `transcription_locale/badge.py` | Dessin du badge de la barre des menus |
 | `SKILL.md` | Instructions du skill Claude Code |
 | `tests/` | Tests unitaires, sans modèle ni réseau |
 
@@ -37,13 +40,14 @@ Sur un entretien de synthèse de ce type, le texte sort sans faute et les deux v
 
 Elles sont vérifiées à chaque revue.
 
-- **L'audio et le texte ne quittent pas la machine.** Le seul accès réseau est le téléchargement des modèles. Tout nouveau modèle a une URL fixe et une empreinte SHA-256 vérifiée avant usage.
+- **L'audio et le texte ne quittent pas la machine.** Le seul accès réseau est le téléchargement des modèles. L'enregistrement des réunions reste local, et seul le son est gardé sur le disque. Tout nouveau modèle a une URL fixe et une empreinte SHA-256 vérifiée avant usage.
 - **Aucun enregistrement réel dans le dépôt.** Ni audio, ni transcription, ni extrait, même court. Les essais utilisent des voix de synthèse. Le `.gitignore` exclut les formats audio et les fichiers produits.
-- **Les dépendances lourdes se chargent au dernier moment.** `mlx_whisper`, `sherpa_onnx` et `numpy` s'importent dans les fonctions qui les utilisent, pour que les tests et `--help` fonctionnent partout.
+- **Les dépendances lourdes se chargent au dernier moment.** `mlx_whisper`, `sherpa_onnx` et `numpy` s'importent dans les fonctions qui les utilisent, pour que les tests et `--help` fonctionnent partout PyObjC et rumps ne s'importent que dans `enregistreur.py` et `badge.py`, que ni la ligne de commande ni les tests n'importent.
 - **Des erreurs qui disent quoi faire.** Une erreur prévisible (fichier absent, ffmpeg manquant, modèle corrompu) produit un message en français qui nomme le fichier en cause, et le code de sortie 2.
 - **Les fichiers produits ne contiennent pas de chemin complet.** Seul le nom du fichier source y figure.
 - **Licences vérifiées.** Un modèle ou une dépendance ajoutés doivent permettre l'usage commercial, et leur licence est citée dans le README.
-- **Python 3.10 ou plus récent**, messages et documentation en français.
+- **Python 3.10 ou plus récent**, messages et documentation en français. L'enregistrement des réunions demande macOS 15.
+- **L'application Réunion n'est jamais refaite si elle existe.** macOS rattache l'autorisation d'enregistrer à sa signature : la reconstruire la ferait perdre sans nouvelle demande.
 
 ## Proposer une modification
 
