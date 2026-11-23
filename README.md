@@ -80,6 +80,7 @@ ScreenCaptureKit impose une piste vidéo : l'écran est capté en vignette de 64
 Points d'attention :
 
 - **Prévenir les participants** en début de réunion que l'on enregistre pour le compte rendu. Contrairement aux notes de Meet, l'enregistrement local ne l'annonce à personne.
+- Les voix sont séparées au seuil 0,8, plus bas que le défaut (1,1) réglé sur des micros-cravates : sur un son de visio, les voix se ressemblent davantage. Si deux personnes sont fondues en une, ou une personne éclatée en plusieurs, comparer puis régénérer sans retranscrire : `transcription-locale seuils "~/Movies/Reunions/Reunion 2026-11-23 14-00-00"`, puis `transcription-locale locuteurs "…" --seuil 0.9`.
 - Whisper invente parfois une phrase sur un long silence. Les génériques de sous-titrage (« Sous-titrage ST' 501 », « Sous-titres réalisés par la communauté d'Amara.org ») sont retirés automatiquement. D'autres formules, comme « Merci d'avoir regardé cette vidéo », restent, car elles peuvent être prononcées pour de vrai.
 - Une version précédente passait par OBS Studio. Si elle a été installée, OBS n'est plus nécessaire : on peut le désinstaller, avec son profil « Reunion RN20 ».
 

@@ -39,6 +39,9 @@ LARGEUR_MENU = 40
 DELAI_FERMETURE = 3.0
 DELAI_DEMARRAGE = 20.0  # imports PyObjC compris
 EXTENSION_AUDIO = ".m4a"
+# Son de visio : les voix se ressemblent plus qu'au micro-cravate. Mesure du 23/11/2026 sur
+# une visio a deux voix : deux locuteurs stables de 0.7 a 0.9, fondus des 1.0 (defaut 1.1).
+SEUIL_REUNION = 0.8
 USAGE_MICRO = "Réunion enregistre votre micro pendant une visio, pour la transcrire sur ce Mac."
 
 
@@ -150,6 +153,10 @@ def commande_extraction(video: str, audio: str, nb_pistes: int) -> list[str]:
         return debut + ["-c:a", "copy", audio]
     return debut + ["-filter_complex", f"amix=inputs={nb_pistes}:normalize=0",
                     "-c:a", "aac", "-b:a", "160k", audio]
+
+
+def arguments_transcription(audio: pathlib.Path) -> list[str]:
+    return ["transcrire", str(audio), "--seuil", str(SEUIL_REUNION)]
 
 
 def urls_dock(app: pathlib.Path) -> list[str]:
@@ -371,7 +378,7 @@ def apres_enregistrement(video: str) -> int:
     from .cli import main
 
     audio = extraire_audio(pathlib.Path(video))
-    return main(["transcrire", str(audio)])
+    return main(arguments_transcription(audio))
 
 
 if __name__ == "__main__":

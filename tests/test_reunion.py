@@ -62,6 +62,14 @@ class Extraction(unittest.TestCase):
         self.assertEqual(commande[-1], "r.m4a")
 
 
+    def test_transcription_au_seuil_des_reunions(self):
+        args = cli.construire_parser().parse_args(
+            reunion.arguments_transcription(pathlib.Path("/x/Reunion.m4a")))
+        self.assertEqual(args.fichiers, ["/x/Reunion.m4a"])
+        self.assertEqual(args.seuil, reunion.SEUIL_REUNION)
+        self.assertLess(reunion.SEUIL_REUNION, cli.SEUIL_DEFAUT)
+
+
 class Application(unittest.TestCase):
     def test_applet_passe_par_la_commande_du_path(self):
         script = reunion.script_applet('/Users/x/a "b"\\py')
