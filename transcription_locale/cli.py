@@ -150,9 +150,9 @@ def commande_reunion(_args: argparse.Namespace) -> int:
 
 
 def commande_raccourci(args: argparse.Namespace) -> int:
-    print("\n".join(installer(dock=not args.sans_dock)))
-    info("Au premier clic sur Réunion, macOS peut demander l'accès au micro et à l'audio "
-         "système pour OBS : accepter, puis recliquer.")
+    print("\n".join(installer(dock=not args.sans_dock, reconstruire=args.reconstruire)))
+    info("Au premier clic sur Réunion, macOS demande l'autorisation d'enregistrer l'écran et "
+         "l'audio système, puis le micro : accepter, puis recliquer sur Réunion.")
     return 0
 
 
@@ -198,12 +198,15 @@ def construire_parser() -> argparse.ArgumentParser:
     p = commandes.add_parser("modeles", help="télécharge et vérifie les modèles de séparation des voix")
     p.set_defaults(action=commande_modeles)
 
-    p = commandes.add_parser("reunion", help="démarre l'enregistrement OBS d'une réunion, "
+    p = commandes.add_parser("reunion", help="démarre l'enregistrement d'une réunion, "
                                              "ou l'arrête et lance la transcription")
     p.set_defaults(action=commande_reunion)
 
-    p = commandes.add_parser("raccourci", help="prépare OBS et ajoute l'icône Réunion au Dock")
+    p = commandes.add_parser("raccourci", help="ajoute l'icône Réunion au Dock")
     p.add_argument("--sans-dock", action="store_true", help="crée l'application sans l'épingler")
+    p.add_argument("--reconstruire", action="store_true",
+                   help="refait l'application même si elle existe (macOS redemandera "
+                        "l'autorisation d'enregistrer)")
     p.set_defaults(action=commande_raccourci)
     return parser
 
