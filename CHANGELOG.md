@@ -2,6 +2,10 @@
 
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/). Tant qu'il reste en 0.x, les options et le format des fichiers produits peuvent changer d'une version à l'autre.
 
+## Non publié
+
+- L'application Réunion du Dock devient une petite application native (`Reunion.swift`, compilée sur le Mac par `raccourci`) : les notifications portent l'icône de Réunion au lieu de l'icône de script. L'ancienne application AppleScript est remplacée une fois : relancer `transcription-locale raccourci`, puis redonner l'autorisation d'enregistrer l'écran et accepter les notifications de Réunion. Demande les outils de développement d'Apple (`xcode-select --install`).
+
 ## 0.3.0 (2026-11-24)
 
 - Mise à jour au clic, optionnelle (`transcription-locale raccourci --mises-a-jour`) : une nouvelle release apparaît dans le menu de Réunion une fois la transcription prête, et s'installe sur un clic. Une requête par jour au plus vers l'API publique de GitHub, sans donnée envoyée. Désactivée par défaut.

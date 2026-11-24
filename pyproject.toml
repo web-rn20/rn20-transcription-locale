@@ -44,4 +44,4 @@ version = { attr = "transcription_locale.__version__" }
 include = ["transcription_locale*"]
 
 [tool.setuptools.package-data]
-transcription_locale = ["ressources/*.icns"]
+transcription_locale = ["ressources/*.icns", "ressources/*.swift"]
