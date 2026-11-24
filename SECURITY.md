@@ -9,6 +9,6 @@ Seule la dernière version publiée est corrigée.
 ## Ce que l'outil fait de vos données
 
 - L'audio et le texte restent sur le Mac : aucun service tiers ne les reçoit.
-- Accès réseau : le téléchargement des modèles (vérifiés par leur empreinte SHA-256 pour la séparation des voix), et, si on l'a activée, une lecture quotidienne de la dernière release sur l'API publique de GitHub, sans aucune donnée envoyée.
+- Accès réseau : le téléchargement des modèles (chacun dans une version figée, vérifiée par son empreinte SHA-256), et, si on l'a activée, une lecture quotidienne de la dernière release sur l'API publique de GitHub, sans aucune donnée envoyée.
 - L'application Réunion du Dock est compilée sur le Mac à partir de [`Reunion.swift`](transcription_locale/ressources/Reunion.swift), lisible dans le dépôt. Aucun binaire n'est livré tout fait.
 - Les étiquettes de version `v*` sont protégées sur le dépôt : seuls ses administrateurs peuvent les créer ou les déplacer.

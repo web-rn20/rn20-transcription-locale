@@ -640,10 +640,10 @@ section { position: relative; }
       actions: ['Ouvrir le dossier des réunions'],
       fait: "Jaune à nouveau : le son est gardé, la vidéo supprimée, et Whisper transcrit en arrière-plan." },
     prete: { c: 'var(--prete)', duree: '', menu: [['Transcription prête', 1], ['Reunion 2026-11-24 14-02-00.txt'], ["Ce badge s'efface seul dans une minute."]],
-      actions: ['Ouvrir la transcription', 'Afficher dans le Finder', 'Fermer'],
+      actions: ['Ouvrir la transcription', 'Afficher dans le Finder', 'Faire un essai de 10 secondes', 'Fermer'],
       fait: "Vert : le Finder montre le texte, une notification aussi. Le badge s'efface seul une minute plus tard." },
-    echec: { c: 'var(--echec)', duree: '', menu: [['Un problème est survenu', 1], ["Réunion n'a pas l'autorisation d'enregistrer. Dans les Réglages, cocher Réunion, puis recliquer sur Réunion dans le Dock."]],
-      actions: ['Ouvrir les Réglages', 'Ouvrir le journal', 'Fermer'],
+    echec: { c: 'var(--echec)', duree: '', menu: [['Un problème est survenu', 1], ["Toujours pas d'autorisation d'enregistrer. Dans les Réglages, activer Réunion, puis recliquer sur Réunion dans le Dock."]],
+      actions: ['Ouvrir les Réglages', 'Ouvrir le dossier des réunions', 'Ouvrir le journal', 'Faire un essai de 10 secondes', 'Fermer'],
       fait: "Gris : quelque chose bloque. Le menu dit quoi, et propose d'ouvrir les Réglages ou le journal." },
   };
   const boutons = document.querySelectorAll('.etats-liste button');

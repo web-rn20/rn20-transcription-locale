@@ -2,6 +2,15 @@
 
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/). Tant qu'il reste en 0.x, les options et le format des fichiers produits peuvent changer d'une version à l'autre.
 
+## 0.5.0 (2026-11-24)
+
+- Accueil au premier clic sur Réunion : un essai de 10 secondes vérifie que le son de l'ordinateur et le micro sont captés, et dit quoi régler sinon. Il se refait depuis le menu du badge.
+- Autorisation guidée : sans autorisation d'enregistrer, Réunion ouvre les Réglages au bon endroit et démarre tout seul dès que Réunion y est activé, sans recliquer.
+- `raccourci` télécharge d'avance Whisper (environ 3 Go) et les modèles de séparation des voix ; `--sans-modeles` pour s'en passer. `modeles` prépare aussi Whisper.
+- Nouvelle commande `verifier` : prérequis, application, modèles, chacun avec la commande qui le répare.
+- Whisper se télécharge dans une version figée, vérifiée par l'empreinte SHA-256 de ses fichiers, comme les modèles de séparation des voix.
+- Mise à jour depuis 0.4 : l'accueil ne s'affiche pas si des réunions ont déjà été enregistrées ; le premier clic enregistre comme avant.
+
 ## 0.4.1 (2026-11-24)
 
 - Le badge vert s'efface seul une minute après la transcription, et le Finder montre le texte dès qu'il est prêt. Il reste affiché tant qu'une mise à jour est proposée, son menu étant le seul endroit où l'installer.

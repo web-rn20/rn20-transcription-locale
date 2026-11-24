@@ -4,6 +4,9 @@ Lance par la commande reunion (icone du Dock), dans son propre processus. Screen
 ecrit lui-meme le fichier ; a l'arret, un processus detache garde le son seul et transcrit.
 
 Etats : preparation -> enregistrement -> finalisation -> transcription -> prete, ou echec.
+Au tout premier lancement : bienvenue, qui propose l'essai de 10 secondes (essai -> mesure ->
+essai_fini). Sans autorisation d'enregistrer : autorisation, qui ouvre les Reglages, attend
+que l'utilisateur coche Reunion et relance l'enregistreur tout seul.
 Le menu du badge dit ce qui se passe et propose ce qu'on peut faire a ce moment-la.
 SIGUSR1 (nouveau clic sur l'icone du Dock) arrete l'enregistrement, ou ferme l'enregistreur
 quand il n'a plus rien a faire.
@@ -36,9 +39,16 @@ DELAI_FINALISATION = 60.0
 DELAI_INSTALLATION = 300.0
 # la pilule verte s'efface seule : la notification et le Finder ont deja montre le texte
 DELAI_PRETE = 60.0
+# Autorisation : un processus neuf la lit toutes les deux secondes (celui-ci peut garder
+# l'ancienne reponse de macOS jusqu'a sa relance). Au-dela du delai, on cesse d'attendre.
+INTERVALLE_AUTORISATION = 2.0
+DELAI_AUTORISATION = 15 * 60.0
+TEST_AUTORISATION = "import sys, Quartz; sys.exit(0 if Quartz.CGPreflightScreenCaptureAccess() else 1)"
 COULEUR_ETAT = {"preparation": "attente", "enregistrement": "enregistrement",
                 "finalisation": "attente", "transcription": "attente",
-                "prete": "prete", "echec": "echec", "installation": "attente"}
+                "prete": "prete", "echec": "echec", "installation": "attente",
+                "bienvenue": "attente", "autorisation": "attente", "essai": "enregistrement",
+                "mesure": "attente", "essai_fini": "prete"}
 
 
 def log(*morceaux: object) -> None:
@@ -62,8 +72,17 @@ class Delegue(Foundation.NSObject):
 
 
 class Enregistreur(rumps.App):
-    def __init__(self) -> None:
+    def __init__(self, mode: str = "reunion", relance: bool = False) -> None:
         super().__init__(reunion.TITRE, title="", quit_button=None)
+        self.mode = mode  # "reunion" ou "essai"
+        # lance apres « autorisation recue » : un nouveau refus ne relance plus, il s'affiche
+        self.relance = relance
+        self.remplacement = False  # un enregistreur neuf est en train de prendre la main
+        self.essai_ok = False
+        self.essai_lignes: list[str] = []
+        self.parole_annoncee = False
+        self.debut_autorisation = self.derniere_lecture = 0.0
+        self.lecture_autorisation: Optional[subprocess.Popen] = None
         self.etat = "preparation"
         self.erreur = ""
         self.reglages = False
@@ -102,7 +121,50 @@ class Enregistreur(rumps.App):
     def lignes(self) -> list:
         e = self.etat
         if e == "preparation":
-            return self.infos("Préparation de l'enregistrement…")
+            return self.infos("Préparation de l'essai…" if self.mode == "essai"
+                              else "Préparation de l'enregistrement…")
+        if e == "bienvenue":
+            return [*self.infos("Bienvenue dans Réunion"),
+                    *self.infos("Un clic sur Réunion dans le Dock enregistre la visio, un second "
+                                "l'arrête et lance la transcription. Tout reste sur ce Mac."),
+                    *self.infos("Commencez par un essai de 10 secondes : il vérifie que le son "
+                                "de l'ordinateur et votre micro arrivent bien."),
+                    None,
+                    rumps.MenuItem("Faire l'essai de 10 secondes", callback=self.lancer_essai),
+                    rumps.MenuItem("Enregistrer une réunion maintenant",
+                                   callback=self.lancer_reunion),
+                    None,
+                    rumps.MenuItem("Fermer", callback=self.fermer)]
+        if e == "autorisation":
+            return [*self.infos("Réunion attend votre autorisation"),
+                    *self.infos("Dans les Réglages ouverts (Confidentialité et sécurité > "
+                                "Enregistrement de l'écran et audio système), activez Réunion."),
+                    *self.infos("Réunion n'y figure pas ? Cliquez sur + et choisissez "
+                                "Réunion dans le dossier Applications de votre dossier "
+                                "personnel."),
+                    *self.infos("L'" + ("essai" if self.mode == "essai" else "enregistrement")
+                                + " démarrera tout seul dès que c'est fait."),
+                    None,
+                    rumps.MenuItem("Ouvrir les Réglages", callback=self.ouvrir_reglages),
+                    rumps.MenuItem("Montrer Réunion dans le Finder", callback=self.montrer_app),
+                    None,
+                    rumps.MenuItem("Annuler", callback=self.fermer)]
+        if e == "essai":
+            ecoute = time.time() - self.debut < reunion.DUREE_ESSAI_SON
+            return [*self.infos("Essai en cours"),
+                    *self.infos("Écoutez : un son joue sur l'ordinateur. Ne parlez pas encore."
+                                if ecoute else "Parlez maintenant, à voix normale, jusqu'à la "
+                                "fin de l'essai.")]
+        if e == "mesure":
+            return self.infos("Mesure de l'essai…")
+        if e == "essai_fini":
+            return [*self.infos("Essai réussi" if self.essai_ok else "Essai : à corriger"),
+                    *[item for ligne in self.essai_lignes for item in self.infos(ligne)],
+                    None,
+                    rumps.MenuItem("Enregistrer une réunion", callback=self.lancer_reunion),
+                    rumps.MenuItem("Refaire l'essai", callback=self.lancer_essai),
+                    None,
+                    rumps.MenuItem("Fermer", callback=self.fermer)]
         if e == "enregistrement":
             self.ligne_duree = rumps.MenuItem(self.libelle_duree())
             return [self.ligne_duree,
@@ -137,6 +199,7 @@ class Enregistreur(rumps.App):
                     None,
                     rumps.MenuItem("Ouvrir la transcription", callback=self.ouvrir_texte),
                     rumps.MenuItem("Afficher dans le Finder", callback=self.afficher_finder),
+                    rumps.MenuItem("Faire un essai de 10 secondes", callback=self.lancer_essai),
                     *self.lignes_mise_a_jour(),
                     None,
                     rumps.MenuItem("Fermer", callback=self.fermer)]
@@ -148,6 +211,7 @@ class Enregistreur(rumps.App):
                 *actions,
                 rumps.MenuItem("Ouvrir le dossier des réunions", callback=self.ouvrir_dossier),
                 rumps.MenuItem("Ouvrir le journal", callback=self.ouvrir_journal),
+                rumps.MenuItem("Faire un essai de 10 secondes", callback=self.lancer_essai),
                 *self.lignes_mise_a_jour(),
                 None,
                 rumps.MenuItem("Fermer", callback=self.fermer)]
@@ -179,8 +243,12 @@ class Enregistreur(rumps.App):
     def poser_badge(self) -> None:
         element = getattr(getattr(self, "_nsapp", None), "nsstatusitem", None)
         if element is not None:  # absent tant que la boucle de l'application n'a pas demarre
-            duree = reunion.chrono(time.time() - self.debut) if self.etat == "enregistrement" else ""
-            badge.poser(element, COULEUR_ETAT[self.etat], duree)
+            duree = (reunion.chrono(time.time() - self.debut)
+                     if self.etat in ("enregistrement", "essai") else "")
+            couleur = COULEUR_ETAT[self.etat]
+            if self.etat == "essai_fini" and not self.essai_ok:
+                couleur = "echec"
+            badge.poser(element, couleur, duree)
 
     def libelle_duree(self) -> str:
         if self.etat == "enregistrement":
@@ -194,6 +262,7 @@ class Enregistreur(rumps.App):
 
     def echec(self, texte: str, reglages: bool = False) -> None:
         self.erreur, self.reglages = texte, reglages
+        self.effacer_essai()
         reunion.notifier(texte)
         self.changer("echec")
 
@@ -202,6 +271,18 @@ class Enregistreur(rumps.App):
             self.ligne_duree.title = self.libelle_duree()
         if self.etat == "enregistrement":
             self.poser_badge()  # la duree defile dans la pilule
+        if self.etat == "essai":
+            ecoule = time.time() - self.debut
+            if ecoule >= reunion.DUREE_ESSAI:
+                self.arreter()
+            else:
+                if ecoule >= reunion.DUREE_ESSAI_SON and not self.parole_annoncee:
+                    self.parole_annoncee = True
+                    self.afficher()  # passage a « Parlez maintenant »
+                    reunion.notifier("Parlez maintenant, à voix normale.")
+                self.poser_badge()
+        if self.etat == "autorisation":
+            self.suivre_autorisation()
         if self.etat == "finalisation" and time.time() - self.debut_fin > DELAI_FINALISATION:
             self.echec("L'enregistrement ne s'est pas terminé correctement. Le fichier est "
                        "peut-être incomplet, dans le dossier des réunions.")
@@ -316,6 +397,49 @@ class Enregistreur(rumps.App):
     def ouvrir_reglages(self, _item) -> None:
         subprocess.run(["open", REGLAGES])
 
+    def montrer_app(self, _item) -> None:
+        subprocess.run(["open", "-R", str(reunion.chemin_app())])
+
+    def lancer_essai(self, _item=None) -> None:
+        self.relancer("essai")
+
+    def lancer_reunion(self, _item=None) -> None:
+        self.relancer("reunion")
+
+    def relancer(self, mode: str) -> None:
+        """Un enregistreur neuf pour un nouvel essai ou une nouvelle reunion : chaque
+        enregistrement a son propre processus, comme avec l'icone du Dock."""
+        marquer_bienvenue()
+        if self.etat == "bienvenue":  # rien n'a encore ete enregistre par ce processus
+            self.mode = mode
+            self.demarrer()
+            return
+        self.remplacer(["--essai"] if mode == "essai" else [])
+
+    def remplacer(self, options: list[str]) -> None:
+        """Passe la main a un enregistreur neuf, puis quitte. La relance tient le verrou de la
+        bascule jusqu'a ce que le nouveau soit pret : un clic sur le Dock entre-temps attend,
+        puis s'adresse a lui. Dans un fil a part, pour ne pas figer le menu."""
+        if self.remplacement:
+            return
+        self.remplacement = True
+
+        def relance():
+            try:
+                reunion.remplacer_enregistreur(options, liberer_pid)
+            except reunion.ErreurReunion as e:
+                log("relance impossible :", e)
+                callAfter(self.relance_ratee, str(e))
+                return
+            callAfter(rumps.quit_application)
+        threading.Thread(target=relance, daemon=True).start()
+
+    def relance_ratee(self, texte: str) -> None:
+        self.remplacement = False
+        # le PID a ete libere : on le reprend, pour que le Dock retrouve cet enregistreur
+        reunion.fichier_pid().write_text(str(os.getpid()))
+        self.echec(f"Relance impossible : {texte}")
+
     def ouvrir_journal(self, _item) -> None:
         journal = self.journal_transcription()
         subprocess.run(["open", str(journal if journal.is_file()
@@ -323,12 +447,24 @@ class Enregistreur(rumps.App):
 
     def fermer(self, _item=None) -> None:
         # quit_application quitte sans repasser par Python : on libere le PID avant
+        self.effacer_essai()
         liberer_pid()
         rumps.quit_application()
+
+    def effacer_essai(self) -> None:
+        """L'essai contient la voix de l'utilisateur : il ne survit ni a un echec ni a la
+        fermeture."""
+        if self.mode == "essai":
+            reunion.fichier_essai().unlink(missing_ok=True)
 
     # --- capture ----------------------------------------------------------------------------
 
     def demarrer(self) -> None:
+        marquer_bienvenue()
+        if self.mode == "essai":
+            self.video = reunion.fichier_essai()
+            self.video.unlink(missing_ok=True)
+        self.changer("preparation")
         if not Quartz.CGPreflightScreenCaptureAccess():
             # affiche la demande de macOS la premiere fois ; ensuite, il faut passer par les Reglages
             if not Quartz.CGRequestScreenCaptureAccess():
@@ -338,9 +474,44 @@ class Enregistreur(rumps.App):
             lambda contenu, erreur: callAfter(self.contenu, contenu, erreur))
 
     def refus(self) -> None:
-        log("autorisation d'enregistrer absente")
-        self.echec("Réunion n'a pas l'autorisation d'enregistrer. Dans les Réglages, cocher "
-                   "Réunion, puis recliquer sur Réunion dans le Dock.", reglages=True)
+        """Autorisation absente : les Reglages s'ouvrent au bon endroit, et l'enregistreur
+        attend que Reunion y soit coche pour repartir tout seul."""
+        if self.relance:
+            # macOS a dit oui au processus de controle, mais refuse encore la capture : on ne
+            # boucle pas, on le dit
+            log("autorisation toujours refusée après la relance")
+            self.echec("macOS ne prend pas encore en compte l'autorisation. Dans les Réglages, "
+                       "vérifier que Réunion est activé, puis recliquer sur Réunion dans le Dock.",
+                       reglages=True)
+            return
+        log("autorisation d'enregistrer absente, attente dans les Réglages")
+        self.debut_autorisation = time.time()
+        self.changer("autorisation")
+        subprocess.run(["open", REGLAGES])
+        reunion.notifier("Réunion a besoin de votre autorisation : dans les Réglages ouverts, "
+                         "activez Réunion. L'enregistrement démarrera tout seul.")
+
+    def suivre_autorisation(self) -> None:
+        if time.time() - self.debut_autorisation > DELAI_AUTORISATION:
+            self.echec("Toujours pas d'autorisation d'enregistrer. Dans les Réglages, activer "
+                       "Réunion, puis recliquer sur Réunion dans le Dock.", reglages=True)
+            return
+        lecture = self.lecture_autorisation
+        if lecture is not None and lecture.poll() is not None:
+            self.lecture_autorisation = None
+            if lecture.returncode == 0:
+                log("autorisation reçue, relance")
+                reunion.notifier("Autorisation reçue. " + ("L'essai démarre."
+                                 if self.mode == "essai" else "L'enregistrement démarre."))
+                self.changer("preparation")  # plus de nouvelle lecture pendant la relance
+                self.remplacer(["--relance"] + (["--essai"] if self.mode == "essai" else []))
+                return
+        if lecture is None and time.time() - self.derniere_lecture >= INTERVALLE_AUTORISATION:
+            self.derniere_lecture = time.time()
+            # un processus neuf, lance d'ici : macOS lui donne la reponse a jour pour Reunion
+            self.lecture_autorisation = subprocess.Popen(
+                [sys.executable, "-c", TEST_AUTORISATION], stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def contenu(self, contenu, erreur) -> None:
         if erreur is not None and erreur.code() == REFUS_TCC:
@@ -383,12 +554,18 @@ class Enregistreur(rumps.App):
             self.echec(f"Échec du démarrage : {erreur.localizedDescription()}")
             return
         self.debut = time.time()
+        if self.mode == "essai":
+            self.changer("essai")
+            jouer_son_essai()
+            reunion.notifier("Essai lancé : écoutez le son sans parler, puis parlez quand le "
+                             "menu vous le demande.")
+            return
         self.changer("enregistrement")
         reunion.notifier("Enregistrement lancé. Prévenez les participants. Pour arrêter : "
                          "le badge rouge dans la barre des menus, ou Réunion dans le Dock.")
 
     def arreter(self, _item=None) -> None:
-        if self.etat != "enregistrement":
+        if self.etat not in ("enregistrement", "essai"):
             return
         self.debut_fin = time.time()
         self.changer("finalisation")
@@ -404,7 +581,7 @@ class Enregistreur(rumps.App):
     def capture_interrompue(self, description: str) -> None:
         # macOS signale parfois une erreur (ReplayKit -5814) une fois le fichier deja ecrit :
         # elle ne concerne plus l'enregistrement et ne doit pas griser une reunion transcrite.
-        if self.etat in ("preparation", "enregistrement"):
+        if self.etat in ("preparation", "enregistrement", "essai"):
             self.echec(f"L'enregistrement s'est interrompu : {description}")
         elif self.etat == "finalisation":
             # le fichier est peut-etre complet : on attend recordingOutputDidFinishRecording,
@@ -415,10 +592,39 @@ class Enregistreur(rumps.App):
 
     def fichier_termine(self) -> None:
         # un echec deja signale (ou un arret qui n'en finit pas) ne lance pas de transcription
-        if self.etat in ("enregistrement", "finalisation"):
+        if self.etat in ("enregistrement", "finalisation") and self.mode == "essai":
+            self.mesurer()
+        elif self.etat in ("enregistrement", "finalisation"):
             self.transcrire()
         else:
             log("fichier terminé ignoré, état :", self.etat)
+
+    def mesurer(self) -> None:
+        log("essai écrit, mesure")
+        self.changer("mesure")
+
+        def mesure():
+            ok, lignes, niveaux = reunion.mesurer_essai(self.video)
+            log("niveaux de l'essai :", niveaux)
+            callAfter(self.essai_mesure, ok, lignes)
+        threading.Thread(target=mesure, daemon=True).start()
+
+    def essai_mesure(self, ok: bool, lignes: list[str]) -> None:
+        log("essai :", "réussi" if ok else "à corriger", "|", " ".join(lignes))
+        self.essai_ok, self.essai_lignes = ok, lignes
+        self.changer("essai_fini")
+        choix = fenetre(
+            "Essai réussi" if ok else "Essai : un réglage à faire",
+            "\n\n".join(lignes) + ("\n\nRéunion est prêt : un clic dans le Dock lance "
+                                    "l'enregistrement de votre prochaine visio." if ok else ""),
+            ["Fermer", "Refaire l'essai", "Enregistrer une réunion"] if ok
+            else ["Refaire l'essai", "Fermer"])
+        if (ok and choix == 1) or (not ok and choix == 0):
+            self.lancer_essai()
+        elif ok and choix == 2:
+            self.lancer_reunion()
+        else:
+            self.fermer()
 
     def journal_transcription(self) -> pathlib.Path:
         return reunion.dossier_journaux() / f"{self.video.stem}.log"
@@ -437,6 +643,30 @@ class Enregistreur(rumps.App):
 
     # --- nouveau clic sur l'icone du Dock ---------------------------------------------------
 
+    def accueillir(self) -> None:
+        """Premier lancement : une fenetre au centre de l'ecran, plus visible que le menu du
+        badge. Le badge jaune garde les memes choix si on la ferme sans repondre."""
+        log("premier lancement : accueil")
+        self.changer("bienvenue")
+        choix = fenetre(
+            "Bienvenue dans Réunion",
+            "Un clic sur Réunion dans le Dock enregistre la visio : le son de l'ordinateur "
+            "(les autres participants) et votre micro (vous). Un second clic l'arrête et lance "
+            "la transcription, sur ce Mac. Rien ne part en ligne.\n\n"
+            "Commencez par un essai de 10 secondes : un son joue sur le Mac pendant que vous "
+            "vous taisez, puis vous parlez. L'essai vérifie que les deux arrivent bien, et il "
+            "est effacé aussitôt.\n\n"
+            "macOS va demander l'autorisation d'enregistrer l'écran et le son, puis le micro : "
+            "acceptez.",
+            ["Faire l'essai de 10 secondes", "Enregistrer une réunion", "Plus tard"])
+        if choix == 0:
+            self.lancer_essai()
+        elif choix == 1:
+            self.lancer_reunion()
+        else:
+            marquer_bienvenue()
+            self.fermer()
+
     def signal_dock(self) -> None:
         log("clic sur l'icône du Dock, état :", self.etat)
         messages = {
@@ -447,12 +677,66 @@ class Enregistreur(rumps.App):
             "installation": "Mise à jour en cours. Attendez la notification de fin pour "
                             "lancer un nouvel enregistrement.",
         }
+        messages.update({
+            "autorisation": "Réunion attend votre autorisation dans les Réglages : activez "
+                            "Réunion, l'enregistrement démarrera tout seul.",
+            "essai": "Essai en cours : il s'arrête tout seul au bout de 10 secondes.",
+            "mesure": "Mesure de l'essai en cours.",
+        })
         if self.etat == "enregistrement":
             self.arreter()
-        elif self.etat in ("prete", "echec"):
+        elif self.etat == "bienvenue":
+            self.lancer_reunion()
+        elif self.etat in ("prete", "echec", "essai_fini"):
             self.fermer()
         else:
             reunion.notifier(messages[self.etat])
+
+
+def fenetre(titre: str, texte: str, boutons: list[str]) -> int:
+    """Fenetre de dialogue de macOS, au premier plan, avec l'icone de Reunion. Renvoie le
+    rang du bouton choisi (0 pour le premier, le bouton par defaut)."""
+    from importlib.resources import as_file, files
+
+    AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    alerte = AppKit.NSAlert.alloc().init()
+    alerte.setMessageText_(titre)
+    alerte.setInformativeText_(texte)
+    for bouton in boutons:
+        alerte.addButtonWithTitle_(bouton)
+    with as_file(files("transcription_locale").joinpath("ressources", "reunion.icns")) as icone:
+        image = AppKit.NSImage.alloc().initWithContentsOfFile_(str(icone))
+        if image is not None:
+            alerte.setIcon_(image)
+    return int(alerte.runModal()) - AppKit.NSAlertFirstButtonReturn
+
+
+def marquer_bienvenue() -> None:
+    try:
+        reunion.fichier_bienvenue().parent.mkdir(parents=True, exist_ok=True)
+        reunion.fichier_bienvenue().touch()
+    except OSError:
+        pass
+
+
+def commande_son_essai() -> list[str]:
+    """afplay -t coupe le son a FIN_SON_ESSAI : il ne deborde jamais sur le moment du micro."""
+    return ["afplay", "-t", f"{reunion.FIN_SON_ESSAI - reunion.DEBUT_SON_ESSAI:g}",
+            reunion.SON_ESSAI]
+
+
+def jouer_son_essai() -> None:
+    """Le son de l'essai, joue par un autre programme (Reunion exclut son propre son de la
+    capture), apres le silence de reference."""
+    def jouer():
+        time.sleep(reunion.DEBUT_SON_ESSAI)
+        try:
+            subprocess.run(commande_son_essai(), stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=reunion.DUREE_ESSAI)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log("son de l'essai impossible :", e)
+    threading.Thread(target=jouer, daemon=True).start()
 
 
 def liberer_pid() -> None:
@@ -468,7 +752,11 @@ def main() -> int:
     # application de barre des menus : sans cela, le menu s'ouvre mais reste invisible
     AppKit.NSApplication.sharedApplication().setActivationPolicy_(
         AppKit.NSApplicationActivationPolicyAccessory)
-    app = Enregistreur()
+    essai = "--essai" in sys.argv[1:]
+    premier = not essai and not reunion.deja_accueilli()
+    # un essai laisse par un plantage n'attend pas le suivant pour disparaitre
+    reunion.fichier_essai().unlink(missing_ok=True)
+    app = Enregistreur("essai" if essai else "reunion", relance="--relance" in sys.argv[1:])
     # le gestionnaire Python tourne entre deux tics de l'horloge, sur le fil principal.
     # Il est pose AVANT d'ecrire le PID : la bascule n'envoie le signal qu'a un enregistreur
     # qui sait le recevoir (par defaut, SIGUSR1 tue le processus).
@@ -477,7 +765,9 @@ def main() -> int:
     pid.parent.mkdir(parents=True, exist_ok=True)
     pid.write_text(str(os.getpid()))
     try:
-        rumps.Timer(lambda t: (t.stop(), app.poser_badge(), app.demarrer(),
+        # au tout premier lancement, l'accueil propose l'essai au lieu d'enregistrer d'emblee
+        rumps.Timer(lambda t: (t.stop(), app.poser_badge(),
+                               app.accueillir() if premier else app.demarrer(),
                                app.verifier_mise_a_jour()), 0.1).start()
         log("enregistreur lancé :", app.video.name)
         app.run()
