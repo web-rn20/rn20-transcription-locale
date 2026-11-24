@@ -1,9 +1,14 @@
 """Enregistrement de reunion en un clic, sans logiciel tiers.
 
 La commande raccourci pose une fois pour toutes l'application ~/Applications/Reunion.app,
-epinglee au Dock. Elle ne la reconstruit pas si elle existe deja : macOS rattache
-l'autorisation d'enregistrer a la signature de l'application, une application refaite
-perdrait cette autorisation.
+epinglee au Dock : une petite application native (ressources/Reunion.swift), compilee sur
+place. Elle ne la reconstruit pas si elle existe deja : macOS rattache l'autorisation
+d'enregistrer a la signature de l'application, une application refaite perdrait cette
+autorisation. Seule exception, une fois : l'ancienne applet AppleScript (jusqu'a 0.3.0), dont
+les notifications portaient l'icone de script, est remplacee par l'application native.
+
+Les notifications passent par l'application (fichier .notification ouvert en arriere-plan),
+pour porter son icone ; sans elle, osascript.
 
 La commande reunion (lancee par l'icone du Dock) bascule :
     aucun enregistreur actif     -> demarre l'enregistreur (module enregistreur)
@@ -43,6 +48,12 @@ EXTENSION_AUDIO = ".m4a"
 # une visio a deux voix : deux locuteurs stables de 0.7 a 0.9, fondus des 1.0 (defaut 1.1).
 SEUIL_REUNION = 0.8
 USAGE_MICRO = "Réunion enregistre votre micro pendant une visio, pour la transcrire sur ce Mac."
+# Genre de l'application, inscrit dans son Info.plist. Le changer fait reconstruire
+# l'application chez tout le monde, donc redonner l'autorisation d'enregistrer : a eviter.
+LANCEUR = "natif-1"
+EXECUTABLE = "Reunion"
+EXTENSION_MESSAGE = ".notification"
+DUREE_MESSAGE = 3600  # un message non lu (application absente, plantage) est efface apres
 
 
 class ErreurReunion(Exception):
@@ -76,6 +87,11 @@ def fichier_verrou() -> pathlib.Path:
     return dossier_etat() / "bascule.lock"
 
 
+def dossier_messages() -> pathlib.Path:
+    """Textes de notification en attente d'etre affiches par l'application."""
+    return dossier_etat() / "notifications"
+
+
 # --- fonctions pures ------------------------------------------------------------------------
 
 def nom_enregistrement(moment: datetime.datetime) -> str:
@@ -105,44 +121,41 @@ def version_suffisante(version: str, minimum: tuple[int, int] = MACOS_MINIMUM) -
     return tuple(morceaux + [0] * (2 - len(morceaux))) >= minimum
 
 
-def chaine_applescript(texte: str) -> str:
-    return '"' + texte.replace("\\", "\\\\").replace('"', '\\"') + '"'
+def info_app(python: str, version: str) -> dict:
+    """Info.plist complet de l'application native. Un identifiant et un nom, pour que macOS
+    affiche Reunion dans ses demandes d'autorisation et ses reglages."""
+    return {
+        "CFBundleIdentifier": ID_APP,
+        "CFBundleName": TITRE,
+        "CFBundleDisplayName": TITRE,
+        "CFBundleExecutable": EXECUTABLE,
+        "CFBundleIconFile": "AppIcon",
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": version,
+        "CFBundleVersion": version,
+        "LSMinimumSystemVersion": ".".join(str(n) for n in MACOS_MINIMUM),
+        "LSUIElement": True,  # ni menu ni fenetre : l'application vit quelques secondes
+        "NSMicrophoneUsageDescription": USAGE_MICRO,
+        "CFBundleDocumentTypes": [{
+            "CFBundleTypeName": "Notification Réunion",
+            "CFBundleTypeExtensions": [EXTENSION_MESSAGE[1:]],
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+        }],
+        "RN20Lanceur": LANCEUR,
+        "RN20Python": python,  # secours si la commande transcription-locale manque au PATH
+    }
 
 
-def script_applet(python: str) -> str:
-    """AppleScript de l'icone du Dock : bascule, et affiche l'erreur si la commande echoue.
-
-    La commande transcription-locale du PATH passe en premier : l'application n'est jamais
-    refaite (elle perdrait son autorisation), elle ne doit donc pas dependre d'un interpreteur
-    fige. Le Python de l'installation ne sert que de secours.
-    """
-    shell = ('export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; '
-             'if command -v transcription-locale >/dev/null 2>&1; '
-             'then exec transcription-locale reunion; else exec ')
-    commande = (f'{chaine_applescript(shell)} & quoted form of {chaine_applescript(python)} & '
-                f'" -m transcription_locale reunion; fi"')
-    return "\n".join([
-        "on run",
-        "\ttry",
-        f"\t\tdo shell script {commande}",
-        "\ton error erreur",  # pas "message" : mot reserve de display alert
-        f"\t\tdisplay alert {chaine_applescript(TITRE)} message erreur as critical",
-        "\tend try",
-        "end run",
-        "",
-    ])
+def commande_compilation(source: str, sortie: str) -> list[str]:
+    # par xcrun : il fournit le SDK de macOS, que swiftc appele directement ne trouve pas
+    cible = "arm64-apple-macos" + ".".join(str(n) for n in MACOS_MINIMUM)
+    return ["xcrun", "swiftc", "-O", "-target", cible, "-o", sortie, source]
 
 
-def info_app(info: dict) -> dict:
-    """Info.plist de l'applet : un identifiant et un nom, pour que macOS affiche Reunion
-    (et non "applet") dans ses demandes d'autorisation et ses reglages."""
-    info = dict(info)
-    info.pop("CFBundleIconName", None)  # sinon macOS prefere l'icone d'Assets.car
-    info["CFBundleIdentifier"] = ID_APP
-    info["CFBundleName"] = TITRE
-    info["CFBundleDisplayName"] = TITRE
-    info["NSMicrophoneUsageDescription"] = USAGE_MICRO
-    return info
+def commande_message(app: pathlib.Path, message: pathlib.Path) -> list[str]:
+    # -g : en arriere-plan, sans voler le focus de la visio
+    return ["open", "-g", "-a", str(app), str(message)]
 
 
 def commande_extraction(video: str, audio: str, nb_pistes: int) -> list[str]:
@@ -187,10 +200,42 @@ def verifier_macos() -> None:
                             f"(trouvé : {version or sys.platform})")
 
 
-def notifier(message: str) -> None:
+def notifier_par_script(message: str) -> None:
     subprocess.run(["osascript", "-e", "on run argv",
                     "-e", "display notification (item 1 of argv) with title (item 2 of argv)",
                     "-e", "end run", message, TITRE], capture_output=True)
+
+
+def nettoyer_messages(maintenant: Optional[float] = None) -> None:
+    """Cycle de vie des messages : l'application efface ceux qu'elle affiche, les autres
+    (application absente ou plantee) partent au bout d'une heure."""
+    maintenant = time.time() if maintenant is None else maintenant
+    try:
+        anciens = [m for m in dossier_messages().glob("*" + EXTENSION_MESSAGE)
+                   if maintenant - m.stat().st_mtime > DUREE_MESSAGE]
+    except OSError:
+        return
+    for message in anciens:
+        message.unlink(missing_ok=True)
+
+
+def notifier(message: str) -> None:
+    """Par l'application, pour porter son icone ; a defaut, notification de script."""
+    app = chemin_app()
+    if app_en_place(app):
+        nettoyer_messages()
+        fichier = None
+        try:
+            dossier_messages().mkdir(parents=True, exist_ok=True)
+            fichier = dossier_messages() / f"{time.time_ns()}-{os.getpid()}{EXTENSION_MESSAGE}"
+            fichier.write_text(message, encoding="utf-8")
+            if subprocess.run(commande_message(app, fichier), capture_output=True).returncode == 0:
+                return
+        except OSError:
+            pass
+        if fichier is not None:
+            fichier.unlink(missing_ok=True)
+    notifier_par_script(message)
 
 
 def environnement() -> dict[str, str]:
@@ -269,47 +314,68 @@ def basculer() -> str:
 # --- installation ---------------------------------------------------------------------------
 
 def app_en_place(app: pathlib.Path) -> bool:
-    """L'application existe et porte deja notre identifiant : on n'y touche plus."""
+    """L'application native existe et porte notre identifiant : on n'y touche plus. L'ancienne
+    applet AppleScript (meme identifiant, sans RN20Lanceur) est a remplacer, une fois."""
     try:
         with open(app / "Contents" / "Info.plist", "rb") as f:
-            return plistlib.load(f).get("CFBundleIdentifier") == ID_APP
+            info = plistlib.load(f)
     except (OSError, plistlib.InvalidFileException):
         return False
+    return info.get("CFBundleIdentifier") == ID_APP and info.get("RN20Lanceur") == LANCEUR
 
 
-def preparer_app(app: pathlib.Path) -> None:
-    """Icone du paquet, identifiant et nom, puis signature ad hoc.
-
-    osacompile range aussi une icone dans Assets.car, que macOS prefere a applet.icns :
-    on la retire, avec la cle CFBundleIconName qui la designe.
-    """
-    from importlib.resources import files
-
-    ressources = app / "Contents" / "Resources"
-    (ressources / "applet.icns").write_bytes(
-        files("transcription_locale").joinpath("ressources", "reunion.icns").read_bytes())
-    (ressources / "Assets.car").unlink(missing_ok=True)
-    info_plist = app / "Contents" / "Info.plist"
-    with open(info_plist, "rb") as f:
-        info = plistlib.load(f)
-    with open(info_plist, "wb") as f:
-        plistlib.dump(info_app(info), f)
-    signature = subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)],
-                               capture_output=True, text=True)
-    if signature.returncode != 0:
-        # sans signature valide, macOS ne retient pas l'autorisation : refaire au prochain passage
-        (app / "Contents" / "Info.plist").unlink(missing_ok=True)
-        raise ErreurReunion(f"signature de {app} impossible : {signature.stderr.strip()}")
-    subprocess.run(["touch", str(app)], capture_output=True)
+def verifier_swiftc() -> None:
+    try:
+        trouve = subprocess.run(["xcrun", "--find", "swiftc"], capture_output=True, text=True)
+    except OSError:
+        trouve = None
+    if trouve is None or trouve.returncode != 0 or not trouve.stdout.strip():
+        raise ErreurReunion("compilateur Swift introuvable : installer les outils de "
+                            "développement d'Apple avec xcode-select --install, puis relancer "
+                            "transcription-locale raccourci")
 
 
 def creer_app(app: pathlib.Path) -> None:
+    """Compile l'application dans un dossier voisin, puis la met en place d'un coup : une
+    compilation ratee laisse l'application precedente intacte."""
+    import shutil
+    from importlib.resources import as_file, files
+
+    from . import __version__
+
+    verifier_swiftc()
     app.parent.mkdir(parents=True, exist_ok=True)
-    compilation = subprocess.run(["osacompile", "-o", str(app), "-e", script_applet(sys.executable)],
-                                 capture_output=True, text=True)
-    if compilation.returncode != 0:
-        raise ErreurReunion(f"création de {app} impossible : {compilation.stderr.strip()}")
-    preparer_app(app)
+    chantier = app.with_name(f".{app.name}.construction")
+    shutil.rmtree(chantier, ignore_errors=True)
+    try:
+        macos = chantier / "Contents" / "MacOS"
+        ressources = chantier / "Contents" / "Resources"
+        macos.mkdir(parents=True)
+        ressources.mkdir()
+        paquet = files("transcription_locale").joinpath("ressources")
+        with as_file(paquet.joinpath("Reunion.swift")) as source:
+            compilation = subprocess.run(
+                commande_compilation(str(source), str(macos / EXECUTABLE)),
+                capture_output=True, text=True)
+        if compilation.returncode != 0:
+            raise ErreurReunion(f"compilation de l'application impossible : "
+                                f"{compilation.stderr.strip()[-800:]}")
+        (ressources / "AppIcon.icns").write_bytes(paquet.joinpath("reunion.icns").read_bytes())
+        with open(chantier / "Contents" / "Info.plist", "wb") as f:
+            plistlib.dump(info_app(sys.executable, __version__), f)
+        signature = subprocess.run(["codesign", "--force", "--sign", "-", str(chantier)],
+                                   capture_output=True, text=True)
+        if signature.returncode != 0:
+            raise ErreurReunion(f"signature de l'application impossible : "
+                                f"{signature.stderr.strip()}")
+        shutil.rmtree(app, ignore_errors=True)
+        chantier.rename(app)
+    finally:
+        shutil.rmtree(chantier, ignore_errors=True)
+    # LaunchServices relit l'application (icone, type .notification)
+    subprocess.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+                    "LaunchServices.framework/Support/lsregister", "-f", str(app)],
+                   capture_output=True)
 
 
 def installer(dock: bool = True, reconstruire: bool = False) -> list[str]:
@@ -320,10 +386,16 @@ def installer(dock: bool = True, reconstruire: bool = False) -> list[str]:
     faits.append(f"Enregistrements : {dossier_enregistrements()}")
 
     app = chemin_app()
+    remplacee = app.exists() and not app_en_place(app)
     reconstruit = not app_en_place(app) or reconstruire
     if reconstruit:
         creer_app(app)
         faits.append(f"Application : {app}")
+        if remplacee or reconstruire:
+            faits.append("Application refaite : macOS redemandera l'autorisation d'enregistrer. "
+                         "Si la demande n'apparaît pas, ajouter Réunion par « + » dans Réglages > "
+                         "Confidentialité et sécurité > Enregistrement de l'écran et audio "
+                         "système, depuis ~/Applications.")
     else:
         faits.append(f"Application déjà en place, autorisations conservées : {app}")
 

@@ -55,9 +55,9 @@ L'enregistrement passe par ScreenCaptureKit, l'outil de capture intégré à mac
 transcription-locale raccourci
 ```
 
-La commande pose l'application `~/Applications/Réunion.app` dans le Dock. `--sans-dock` crée l'application sans l'épingler.
+La commande pose l'application `~/Applications/Réunion.app` dans le Dock. `--sans-dock` crée l'application sans l'épingler. C'est une petite application native, compilée sur le Mac à partir de [`Reunion.swift`](transcription_locale/ressources/Reunion.swift) (une centaine de lignes) : il faut les outils de développement d'Apple, déjà présents si Git fonctionne, sinon `xcode-select --install`. Elle ne fait que deux choses : lancer `transcription-locale reunion` au clic, et afficher les notifications de Réunion avec son icône. Au premier message, macOS demande d'autoriser ses notifications.
 
-Au premier clic, macOS demande l'autorisation d'enregistrer l'écran et l'audio système, puis le micro. Si la demande n'apparaît pas, le badge gris de la barre des menus propose « Ouvrir les Réglages » : cocher Réunion dans « Enregistrement de l'écran et des sons du système », puis recliquer sur Réunion dans le Dock. L'autorisation se donne une fois par Mac. macOS la rattache à la signature de l'application : `raccourci` ne refait donc jamais une application déjà en place, et les mises à jour de l'outil ne la touchent pas. `--reconstruire` force sa recréation, au prix d'une nouvelle autorisation.
+Au premier clic, macOS demande l'autorisation d'enregistrer l'écran et l'audio système, puis le micro. Si la demande n'apparaît pas, le badge gris de la barre des menus propose « Ouvrir les Réglages » : cocher Réunion dans « Enregistrement de l'écran et des sons du système », puis recliquer sur Réunion dans le Dock. L'autorisation se donne une fois par Mac. macOS la rattache à la signature de l'application : `raccourci` ne refait donc jamais une application déjà en place, et les mises à jour de l'outil ne la touchent pas. `--reconstruire` force sa recréation, au prix d'une nouvelle autorisation. Seule exception : l'ancienne application AppleScript des versions 0.2 et 0.3 est remplacée une fois par l'application native, et l'autorisation est alors à redonner.
 
 Pendant la réunion, un badge dans la barre des menus montre où l'on en est :
 

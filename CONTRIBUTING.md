@@ -16,6 +16,7 @@ Merci de votre intérêt. Le projet est en cours de développement : une issue a
 | `transcription_locale/reunion.py` | Raccourci Réunion : application du Dock, bascule, extraction du son après l'enregistrement (sans PyObjC) |
 | `transcription_locale/enregistreur.py` | Enregistreur ScreenCaptureKit, badge et menu de la barre des menus (PyObjC, macOS seulement) |
 | `transcription_locale/badge.py` | Dessin du badge de la barre des menus |
+| `transcription_locale/ressources/Reunion.swift` | Application Réunion du Dock : lance la bascule, affiche les notifications. Compilée sur chaque Mac par `raccourci` |
 | `transcription_locale/mises_a_jour.py` | Mise à jour au clic, optionnelle : lecture de la dernière release, installation (sans PyObjC) |
 | `SKILL.md` | Instructions du skill Claude Code |
 | `tests/` | Tests unitaires, sans modèle ni réseau |
@@ -48,7 +49,8 @@ Elles sont vérifiées à chaque revue.
 - **Les fichiers produits ne contiennent pas de chemin complet.** Seul le nom du fichier source y figure.
 - **Licences vérifiées.** Un modèle ou une dépendance ajoutés doivent permettre l'usage commercial, et leur licence est citée dans le README.
 - **Python 3.10 ou plus récent**, messages et documentation en français. L'enregistrement des réunions demande macOS 15.
-- **L'application Réunion n'est jamais refaite si elle existe.** macOS rattache l'autorisation d'enregistrer à sa signature : la reconstruire la ferait perdre sans nouvelle demande.
+- **L'application Réunion n'est jamais refaite si elle existe.** macOS rattache l'autorisation d'enregistrer à sa signature : la reconstruire la ferait perdre sans nouvelle demande. Une modification de `Reunion.swift` ne sert donc qu'aux nouvelles installations ; changer `LANCEUR` dans `reunion.py` la ferait reconstruire chez tout le monde, à réserver à un vrai besoin et à annoncer dans le journal des versions.
+- **L'application ne fait que deux choses.** Lancer `transcription-locale reunion` et afficher le texte d'un fichier `.notification`, qu'elle efface ensuite. Aucun accès réseau, aucun autre fichier lu, aucun binaire livré tout compilé.
 
 ## Proposer une modification
 

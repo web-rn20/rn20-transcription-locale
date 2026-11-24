@@ -1,7 +1,11 @@
 """Raccourci reunion : contenus generes pour le Dock et l'application, sans PyObjC ni reseau."""
 import datetime
+import os
 import pathlib
+import plistlib
+import tempfile
 import unittest
+from unittest import mock
 
 from transcription_locale import cli, reunion
 from transcription_locale.transcription import sans_hallucinations
@@ -71,38 +75,102 @@ class Extraction(unittest.TestCase):
 
 
 class Application(unittest.TestCase):
-    def test_applet_passe_par_la_commande_du_path(self):
-        script = reunion.script_applet('/Users/x/a "b"\\py')
-        self.assertIn("command -v transcription-locale", script)
-        self.assertIn("exec transcription-locale reunion", script)
-        self.assertIn('quoted form of "/Users/x/a \\"b\\"\\\\py"', script)  # secours
-        self.assertIn("-m transcription_locale reunion; fi", script)
-        self.assertIn("on error erreur", script)
-
-    def test_info_plist_nomme_l_application(self):
-        info = reunion.info_app({"CFBundleName": "applet", "CFBundleIconName": "applet",
-                                 "CFBundleExecutable": "applet"})
+    def test_info_plist_de_l_application_native(self):
+        info = reunion.info_app("/Users/x/py", "0.4.0")
         self.assertEqual(info["CFBundleIdentifier"], reunion.ID_APP)
         self.assertEqual(info["CFBundleName"], "Réunion")
-        self.assertEqual(info["CFBundleExecutable"], "applet")
+        self.assertEqual(info["CFBundleExecutable"], reunion.EXECUTABLE)
+        self.assertEqual(info["RN20Lanceur"], reunion.LANCEUR)
+        self.assertEqual(info["RN20Python"], "/Users/x/py")
+        self.assertEqual(info["LSMinimumSystemVersion"], "15.0")
         self.assertIn("NSMicrophoneUsageDescription", info)
-        self.assertNotIn("CFBundleIconName", info)
+        self.assertEqual(info["CFBundleDocumentTypes"][0]["CFBundleTypeExtensions"],
+                         ["notification"])
 
-    def test_application_existante_conservee(self):
-        import plistlib
-        import tempfile
-
+    def test_application_existante_conservee_ancienne_applet_remplacee(self):
         with tempfile.TemporaryDirectory() as dossier:
             app = pathlib.Path(dossier) / "Réunion.app"
             self.assertFalse(reunion.app_en_place(app))
             (app / "Contents").mkdir(parents=True)
-            with open(app / "Contents" / "Info.plist", "wb") as f:
-                plistlib.dump({"CFBundleIdentifier": "com.apple.ScriptEditor.id.x"}, f)
-            self.assertFalse(reunion.app_en_place(app))  # ancienne version : a refaire
-            with open(app / "Contents" / "Info.plist", "wb") as f:
-                plistlib.dump(reunion.info_app({}), f)
+
+            def poser(info):
+                with open(app / "Contents" / "Info.plist", "wb") as f:
+                    plistlib.dump(info, f)
+
+            poser({"CFBundleIdentifier": "com.apple.ScriptEditor.id.x"})
+            self.assertFalse(reunion.app_en_place(app))
+            poser({"CFBundleIdentifier": reunion.ID_APP, "CFBundleExecutable": "applet"})
+            self.assertFalse(reunion.app_en_place(app))  # applet AppleScript jusqu'a 0.3.0
+            poser(reunion.info_app("/py", "0.4.0"))
             self.assertTrue(reunion.app_en_place(app))
 
+    def test_compilation_et_ouverture_du_message(self):
+        commande = reunion.commande_compilation("/s/Reunion.swift", "/a/Reunion")
+        self.assertEqual(commande[:3], ["xcrun", "swiftc", "-O"])
+        self.assertIn("arm64-apple-macos15.0", commande)
+        self.assertEqual(reunion.commande_message(pathlib.Path("/A/Réunion.app"), pathlib.Path("/m")),
+                         ["open", "-g", "-a", "/A/Réunion.app", "/m"])
+
+    def test_source_swift_livree_avec_le_paquet(self):
+        from importlib.resources import files
+
+        source = files("transcription_locale").joinpath("ressources", "Reunion.swift").read_text(
+            encoding="utf-8")
+        self.assertIn("exec transcription-locale reunion", source)
+        self.assertIn('"RN20Python"', source)
+        self.assertIn('["-c", script, "sh", python]', source)  # chemin en argument, pas dans le script
+        self.assertIn("removeItem", source)  # chaque message lu est efface
+
+
+class Notifications(unittest.TestCase):
+    def setUp(self):
+        self.dossier = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.dossier, ignore_errors=True))
+        for nom, valeur in (("dossier_etat", self.dossier), ("chemin_app", self.dossier / "Réunion.app")):
+            patcher = mock.patch.object(reunion, nom, return_value=valeur)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def messages(self):
+        return list(reunion.dossier_messages().glob("*.notification"))
+
+    def test_sans_application_native_notification_de_script(self):
+        with mock.patch.object(reunion.subprocess, "run") as run:
+            reunion.notifier("Bonjour")
+        self.assertEqual(run.call_args.args[0][0], "osascript")
+
+    def test_par_l_application_native(self):
+        with mock.patch.object(reunion, "app_en_place", return_value=True), \
+                mock.patch.object(reunion.subprocess, "run",
+                                  return_value=mock.Mock(returncode=0)) as run:
+            reunion.notifier("Transcription prête")
+        commande = run.call_args.args[0]
+        self.assertEqual(commande[:3], ["open", "-g", "-a"])
+        message = pathlib.Path(commande[-1])
+        self.assertEqual(message.read_text(encoding="utf-8"), "Transcription prête")
+        self.assertEqual(message.parent, reunion.dossier_messages())
+
+    def test_ouverture_ratee_message_efface_et_script(self):
+        with mock.patch.object(reunion, "app_en_place", return_value=True), \
+                mock.patch.object(reunion.subprocess, "run",
+                                  return_value=mock.Mock(returncode=1)) as run:
+            reunion.notifier("Bonjour")
+        self.assertEqual(run.call_args.args[0][0], "osascript")
+        self.assertEqual(self.messages(), [])
+
+    def test_messages_oublies_effaces_apres_une_heure(self):
+        reunion.dossier_messages().mkdir(parents=True)
+        vieux = reunion.dossier_messages() / "1.notification"
+        recent = reunion.dossier_messages() / "2.notification"
+        for m in (vieux, recent):
+            m.write_text("x")
+        os.utime(vieux, (1000.0, 1000.0))
+        os.utime(recent, (1000.0 + reunion.DUREE_MESSAGE, 1000.0 + reunion.DUREE_MESSAGE))
+        reunion.nettoyer_messages(maintenant=1000.0 + reunion.DUREE_MESSAGE + 1)
+        self.assertEqual(self.messages(), [recent])
+
+
+class Dock(unittest.TestCase):
     def test_dock_reconnait_l_app_accents_composes_ou_non(self):
         app = pathlib.Path("/Users/x/Applications/Réunion.app")
         nfc, nfd = reunion.urls_dock(app)

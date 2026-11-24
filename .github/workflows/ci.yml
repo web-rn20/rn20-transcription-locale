@@ -39,5 +39,7 @@ jobs:
           transcription-locale --version
           python -c "import mlx_whisper, sherpa_onnx, numpy"
           python -c "import transcription_locale.enregistreur, transcription_locale.badge"
+      - name: Compiler l'application Réunion
+        run: xcrun swiftc -O -target arm64-apple-macos15.0 -o "$RUNNER_TEMP/Reunion" transcription_locale/ressources/Reunion.swift
       - name: Télécharger et vérifier les modèles de séparation des voix
         run: transcription-locale modeles
