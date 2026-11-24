@@ -150,7 +150,14 @@ def commande_reunion(_args: argparse.Namespace) -> int:
 
 
 def commande_raccourci(args: argparse.Namespace) -> int:
-    print("\n".join(installer(dock=not args.sans_dock, reconstruire=args.reconstruire)))
+    from . import mises_a_jour
+
+    faits = installer(dock=not args.sans_dock, reconstruire=args.reconstruire)
+    if args.mises_a_jour is not None:
+        mises_a_jour.choisir(args.mises_a_jour)
+    faits.append("Mises à jour au clic : " + ("activées" if mises_a_jour.activees()
+                                             else "désactivées (--mises-a-jour pour les activer)"))
+    print("\n".join(faits))
     info("Au premier clic sur Réunion, macOS demande l'autorisation d'enregistrer l'écran et "
          "l'audio système, puis le micro : accepter, puis recliquer sur Réunion.")
     return 0
@@ -207,6 +214,12 @@ def construire_parser() -> argparse.ArgumentParser:
     p.add_argument("--reconstruire", action="store_true",
                    help="refait l'application même si elle existe (macOS redemandera "
                         "l'autorisation d'enregistrer)")
+    choix = p.add_mutually_exclusive_group()
+    choix.add_argument("--mises-a-jour", dest="mises_a_jour", action="store_true", default=None,
+                       help="propose les nouvelles versions dans le menu de Réunion, "
+                            "installées sur un clic (une requête par jour vers GitHub)")
+    choix.add_argument("--sans-mises-a-jour", dest="mises_a_jour", action="store_false",
+                       help="désactive cette proposition (réglage par défaut)")
     p.set_defaults(action=commande_raccourci)
     return parser
 

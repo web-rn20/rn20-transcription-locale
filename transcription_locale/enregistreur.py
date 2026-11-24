@@ -16,6 +16,7 @@ import pathlib
 import signal
 import subprocess
 import sys
+import threading
 import time
 from typing import Optional
 
@@ -27,15 +28,15 @@ import rumps
 import ScreenCaptureKit as SCK
 from PyObjCTools.AppHelper import callAfter
 
-from . import reunion
-from . import badge
+from . import badge, mises_a_jour, reunion
 
 REGLAGES = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 REFUS_TCC = -3801  # SCStreamErrorUserDeclined : l'autorisation manque
 DELAI_FINALISATION = 60.0
+DELAI_INSTALLATION = 300.0
 COULEUR_ETAT = {"preparation": "attente", "enregistrement": "enregistrement",
                 "finalisation": "attente", "transcription": "attente",
-                "prete": "prete", "echec": "echec"}
+                "prete": "prete", "echec": "echec", "installation": "attente"}
 
 
 def log(*morceaux: object) -> None:
@@ -52,8 +53,7 @@ class Delegue(Foundation.NSObject):
 
     def recordingOutput_didFailWithError_(self, _sortie, erreur):
         log("echec de l'enregistrement :", erreur)
-        callAfter(self.app.echec, f"L'enregistrement s'est interrompu : "
-                                  f"{erreur.localizedDescription()}")
+        callAfter(self.app.capture_interrompue, erreur.localizedDescription())
 
     def recordingOutputDidFinishRecording_(self, _sortie):
         callAfter(self.app.fichier_termine)
@@ -69,6 +69,12 @@ class Enregistreur(rumps.App):
         self.flux = self.sortie = None
         self.transcription: Optional[subprocess.Popen] = None
         self.ligne_duree: Optional[rumps.MenuItem] = None
+        self.maj: Optional[mises_a_jour.Version] = None
+        self.maj_installee = ""
+        self.installation: Optional[subprocess.Popen] = None
+        self.etat_avant_installation = "prete"
+        self.debut_installation = 0.0
+        self.erreur_maj = ""
         reunion.dossier_enregistrements().mkdir(parents=True, exist_ok=True)
         self.video = reunion.dossier_enregistrements() / reunion.nom_enregistrement(
             datetime.datetime.now())
@@ -113,12 +119,19 @@ class Enregistreur(rumps.App):
                                 "Vous pouvez continuer à travailler, une notification suivra."),
                     None,
                     rumps.MenuItem("Ouvrir le dossier des réunions", callback=self.ouvrir_dossier)]
+        if e == "installation":
+            return [*self.infos(f"Installation de la version {self.maj.numero}…"),
+                    *self.infos("Quelques secondes en général. Attendez la fin avant de "
+                                "lancer un nouvel enregistrement."),
+                    None,
+                    rumps.MenuItem("Annuler la mise à jour", callback=self.annuler_mise_a_jour)]
         if e == "prete":
             return [*self.infos("Transcription prête"),
                     *self.infos(self.texte().name),
                     None,
                     rumps.MenuItem("Ouvrir la transcription", callback=self.ouvrir_texte),
                     rumps.MenuItem("Afficher dans le Finder", callback=self.afficher_finder),
+                    *self.lignes_mise_a_jour(),
                     None,
                     rumps.MenuItem("Fermer", callback=self.fermer)]
         actions = [rumps.MenuItem("Ouvrir les Réglages", callback=self.ouvrir_reglages)] \
@@ -129,8 +142,23 @@ class Enregistreur(rumps.App):
                 *actions,
                 rumps.MenuItem("Ouvrir le dossier des réunions", callback=self.ouvrir_dossier),
                 rumps.MenuItem("Ouvrir le journal", callback=self.ouvrir_journal),
+                *self.lignes_mise_a_jour(),
                 None,
                 rumps.MenuItem("Fermer", callback=self.fermer)]
+
+    def lignes_mise_a_jour(self) -> list:
+        """Proposee seulement une fois la transcription finie (pret ou echec), jamais avant."""
+        if self.maj_installee:
+            return [None, *self.infos(f"Version {self.maj_installee} installée : elle servira "
+                                      f"au prochain enregistrement.")]
+        if self.maj is None:
+            return []
+        return [None,
+                *self.infos(f"Mise à jour {self.maj.numero} disponible"),
+                *(self.infos(self.erreur_maj) if self.erreur_maj else []),
+                *(self.infos(self.maj.notes[:120]) if self.maj.notes else []),
+                rumps.MenuItem(f"Installer la version {self.maj.numero}",
+                               callback=self.installer_mise_a_jour)]
 
     def afficher(self) -> None:
         self.menu.clear()
@@ -166,6 +194,12 @@ class Enregistreur(rumps.App):
         if self.etat == "finalisation" and time.time() - self.debut_fin > DELAI_FINALISATION:
             self.echec("L'enregistrement ne s'est pas terminé correctement. Le fichier est "
                        "peut-être incomplet, dans le dossier des réunions.")
+        if self.etat == "installation":
+            if self.installation.poll() is not None:
+                self.fin_installation(self.installation.returncode)
+            elif time.time() - self.debut_installation > DELAI_INSTALLATION:
+                self.interrompre_installation("La mise à jour a pris trop de temps et a été "
+                                              "annulée. Vous pouvez réessayer plus tard.")
         if self.etat == "transcription" and self.transcription.poll() is not None:
             code = self.transcription.returncode
             log("transcription terminée, code", code)
@@ -174,6 +208,80 @@ class Enregistreur(rumps.App):
                 self.changer("prete")
             else:
                 self.echec("La transcription a échoué. Le journal donne le détail.")
+
+    # --- mise a jour au clic ----------------------------------------------------------------
+
+    def verifier_mise_a_jour(self) -> None:
+        """Fil secondaire : la requete reseau ne bloque ni le menu ni l'enregistrement."""
+        def verifier():
+            version = mises_a_jour.disponible()
+            if version is not None:
+                callAfter(self.mise_a_jour_trouvee, version)
+        threading.Thread(target=verifier, daemon=True).start()
+
+    def mise_a_jour_trouvee(self, version: mises_a_jour.Version) -> None:
+        log("mise à jour disponible :", version.etiquette)
+        self.maj = version
+        if self.etat in ("prete", "echec"):
+            self.afficher()
+
+    def installer_mise_a_jour(self, _item) -> None:
+        if self.maj is None or self.etat not in ("prete", "echec"):
+            return
+        uv = mises_a_jour.trouver_uv()
+        if uv is None:
+            self.maj_ratee("Mise à jour impossible : la commande uv est introuvable.")
+            return
+        try:
+            commande = mises_a_jour.commande_installation(self.maj, uv)
+            log("installation :", " ".join(commande))
+            reunion.dossier_journaux().mkdir(parents=True, exist_ok=True)
+            with open(reunion.dossier_journaux() / "mise-a-jour.log", "a",
+                      encoding="utf-8") as sortie:
+                self.installation = subprocess.Popen(
+                    commande, stdin=subprocess.DEVNULL, stdout=sortie, stderr=subprocess.STDOUT,
+                    start_new_session=True, env=reunion.environnement())
+        except (OSError, ValueError) as e:
+            log("installation impossible :", e)
+            self.maj_ratee(f"Mise à jour impossible : {e}")
+            return
+        self.erreur_maj = ""
+        self.etat_avant_installation = self.etat
+        self.debut_installation = time.time()
+        self.changer("installation")
+
+    def annuler_mise_a_jour(self, _item) -> None:
+        if self.etat == "installation":
+            self.interrompre_installation("Mise à jour annulée. La version installée reste "
+                                          "en place.")
+
+    def interrompre_installation(self, texte: str) -> None:
+        log("installation interrompue")
+        try:
+            os.killpg(self.installation.pid, signal.SIGTERM)  # uv et ses sous-processus git
+        except OSError:
+            pass
+        self.changer(self.etat_avant_installation)
+        self.maj_ratee(texte)
+
+    def maj_ratee(self, texte: str) -> None:
+        """Une mise a jour ratee ne touche pas a l'etat de la reunion : la transcription reste
+        accessible, le menu dit ce qui s'est passe et propose de reessayer."""
+        self.erreur_maj = texte
+        reunion.notifier(texte)
+        self.afficher()
+
+    def fin_installation(self, code: int) -> None:
+        log("installation terminée, code", code)
+        if code == 0:
+            self.maj_installee, self.maj = self.maj.numero, None
+            self.changer(self.etat_avant_installation)
+            reunion.notifier(f"Réunion {self.maj_installee} installée. Elle servira au "
+                             f"prochain enregistrement.")
+        else:
+            self.changer(self.etat_avant_installation)
+            self.maj_ratee("La mise à jour a échoué. Le journal mise-a-jour.log donne le "
+                           "détail.")
 
     # --- actions du menu --------------------------------------------------------------------
 
@@ -274,6 +382,18 @@ class Enregistreur(rumps.App):
         else:
             log("capture arrêtée")
 
+    def capture_interrompue(self, description: str) -> None:
+        # macOS signale parfois une erreur (ReplayKit -5814) une fois le fichier deja ecrit :
+        # elle ne concerne plus l'enregistrement et ne doit pas griser une reunion transcrite.
+        if self.etat in ("preparation", "enregistrement"):
+            self.echec(f"L'enregistrement s'est interrompu : {description}")
+        elif self.etat == "finalisation":
+            # le fichier est peut-etre complet : on attend recordingOutputDidFinishRecording,
+            # ou le delai de finalisation qui signalera l'echec
+            log("erreur pendant la finalisation, en attente du fichier")
+        else:
+            log("erreur tardive ignorée, état :", self.etat)
+
     def fichier_termine(self) -> None:
         # un echec deja signale (ou un arret qui n'en finit pas) ne lance pas de transcription
         if self.etat in ("enregistrement", "finalisation"):
@@ -305,6 +425,8 @@ class Enregistreur(rumps.App):
             "finalisation": "Enregistrement en cours d'écriture, la transcription va suivre.",
             "transcription": "Transcription en cours : un nouvel enregistrement pourra "
                              "démarrer quand elle sera prête.",
+            "installation": "Mise à jour en cours. Attendez la notification de fin pour "
+                            "lancer un nouvel enregistrement.",
         }
         if self.etat == "enregistrement":
             self.arreter()
@@ -336,7 +458,8 @@ def main() -> int:
     pid.parent.mkdir(parents=True, exist_ok=True)
     pid.write_text(str(os.getpid()))
     try:
-        rumps.Timer(lambda t: (t.stop(), app.poser_badge(), app.demarrer()), 0.1).start()
+        rumps.Timer(lambda t: (t.stop(), app.poser_badge(), app.demarrer(),
+                               app.verifier_mise_a_jour()), 0.1).start()
         log("enregistreur lancé :", app.video.name)
         app.run()
     finally:
