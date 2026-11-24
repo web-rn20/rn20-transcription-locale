@@ -19,6 +19,9 @@ Merci de votre intérêt. Le projet est en cours de développement : une issue a
 | `transcription_locale/ressources/Reunion.swift` | Application Réunion du Dock : lance la bascule, affiche les notifications. Compilée sur chaque Mac par `raccourci` |
 | `transcription_locale/mises_a_jour.py` | Mise à jour au clic, optionnelle : lecture de la dernière release, installation (sans PyObjC) |
 | `SKILL.md` | Instructions du skill Claude Code |
+| `site/` | Illustrations partagées par le README et la future page de présentation |
+| `SECURITY.md` | Signalement privé des failles, données traitées |
+| `.github/workflows/release.yml`, `.github/scripts/notes_de_version.py` | Publication d'une release à partir d'une étiquette `vX.Y.Z` poussée depuis `main` |
 | `tests/` | Tests unitaires, sans modèle ni réseau |
 
 ## Lancer les tests
@@ -56,7 +59,9 @@ Elles sont vérifiées à chaque revue.
 
 1. Dans la pull request : monter `__version__` dans `transcription_locale/__init__.py` et ajouter au journal des versions une section `## X.Y.Z (date)`.
 2. Après la fusion, depuis `main` à jour : `git tag vX.Y.Z && git push origin vX.Y.Z`. Seuls les administrateurs du dépôt peuvent pousser une étiquette `v*`.
-3. L'action Release vérifie que l'étiquette, `__version__` et le journal concordent, puis publie la release avec les notes du journal. Une discordance bloque la publication.
+3. L'action Release vérifie que l'étiquette pointe sur un commit de `main`, et que l'étiquette, `__version__` et le journal concordent, puis publie la release avec les notes du journal. Une discordance bloque la publication.
+
+La protection des étiquettes `v*` n'est pas dans le dépôt : c'est la règle « Etiquettes de version protegees » de ses réglages GitHub (Rules). La mise à jour au clic en dépend. Sur un fork ou un dépôt recréé, la poser avant toute release.
 
 ## Proposer une modification
 

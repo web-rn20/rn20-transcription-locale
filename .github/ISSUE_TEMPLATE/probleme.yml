@@ -35,5 +35,5 @@ body:
       label: Extrait du journal
       description: |
         Pour Réunion : les dernières lignes de `~/Library/Logs/transcription-locale/reunion.log`. Pour une transcription : le message d'erreur affiché.
-        Relisez-le avant de l'envoyer : retirez tout nom de fichier ou de personne que vous ne voulez pas rendre public.
+        Relisez-le avant de l'envoyer, il sera public : remplacez `/Users/votre-compte` par `~` (le nom de votre compte macOS apparaît dans les erreurs Python), et retirez tout nom de fichier ou de personne que vous ne voulez pas rendre public.
       render: text

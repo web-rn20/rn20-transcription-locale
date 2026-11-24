@@ -1,10 +1,12 @@
 name: Release
 
 # Pousser une etiquette vX.Y.Z (reservee aux administrateurs du depot) publie la release,
-# avec les notes du CHANGELOG, apres avoir verifie que la version du paquet concorde.
+# avec les notes du CHANGELOG, apres avoir verifie que le commit est sur main et que la
+# version du paquet concorde. La mise a jour au clic propose la derniere release : rien
+# d'autre que main ne doit y arriver.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: write
@@ -16,15 +18,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Vérifier que l'étiquette pointe sur main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "release refusée : $GITHUB_REF_NAME ne pointe pas sur un commit de main" >&2
+            exit 1
+          fi
       - name: Vérifier la version et extraire les notes
         run: python3 .github/scripts/notes_de_version.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
       - name: Publier la release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md"; then
+            exit 0
+          fi
+          # relance d'un job deja passe : la release existe, rien a refaire
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null; then
             echo "Release $GITHUB_REF_NAME déjà publiée."
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md"
+          exit 1

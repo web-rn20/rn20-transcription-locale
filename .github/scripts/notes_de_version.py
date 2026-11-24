@@ -20,7 +20,7 @@ def notes(etiquette: str, racine: pathlib.Path) -> str:
         raise ValueError(f"__version__ vaut {version.group(1) if version else '?'}, "
                          f"l'étiquette {etiquette}")
     journal = (racine / "CHANGELOG.md").read_text(encoding="utf-8")
-    section = re.search(rf"^## {re.escape(numero)} \(.*?\)\n(.*?)(?=^## |\Z)", journal, re.M | re.S)
+    section = re.search(rf"^## {re.escape(numero)} \(.*?\)[ \t]*\r?\n(.*?)(?=^## |\Z)", journal, re.M | re.S)
     if not section or not section.group(1).strip():
         raise ValueError(f"CHANGELOG.md n'a pas de section « ## {numero} (date) »")
     return section.group(1).strip() + "\n"

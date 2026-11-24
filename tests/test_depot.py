@@ -13,7 +13,9 @@ _spec.loader.exec_module(notes_de_version)
 
 class NotesDeVersion(unittest.TestCase):
     def depot(self, version: str, journal: str) -> pathlib.Path:
-        dossier = pathlib.Path(tempfile.mkdtemp())
+        temporaire = tempfile.TemporaryDirectory()
+        self.addCleanup(temporaire.cleanup)
+        dossier = pathlib.Path(temporaire.name)
         (dossier / "transcription_locale").mkdir()
         (dossier / "transcription_locale" / "__init__.py").write_text(
             f'"""x"""\n\n__version__ = "{version}"\n', encoding="utf-8")
@@ -34,6 +36,11 @@ class NotesDeVersion(unittest.TestCase):
         for etiquette, racine in cas:
             with self.subTest(etiquette=etiquette), self.assertRaises(ValueError):
                 notes_de_version.notes(etiquette, racine)
+
+    def test_titre_avec_espace_final_ou_fin_de_ligne_windows(self):
+        journal = "# Journal\r\n\r\n## 0.5.0 (2026-12-01)  \r\n\r\n- Nouveau.\r\n"
+        self.assertEqual(notes_de_version.notes("v0.5.0", self.depot("0.5.0", journal)).strip(),
+                         "- Nouveau.")
 
     def test_depot_actuel_coherent(self):
         init = (RACINE / "transcription_locale" / "__init__.py").read_text(encoding="utf-8")

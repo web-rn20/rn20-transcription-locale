@@ -9,15 +9,13 @@ Un outil en ligne de commande qui transcrit des enregistrements en français et 
 
 L'outil est né pour transcrire une journée de conférences, environ cinq heures d'audio prises avec des micros-cravates et un enregistreur de salle. Il sert aussi pour des entretiens, et pour garder le compte rendu d'une visio dont on n'est pas l'organisateur.
 
-Présentation en une page : https://web-rn20.github.io/rn20-transcription-locale/
-
 > Projet en cours de développement. Les options et le format des fichiers produits peuvent encore changer entre deux versions. Les retours sont bienvenus dans les [issues](https://github.com/web-rn20/rn20-transcription-locale/issues).
 
 ## En bref
 
 ![Le badge Réunion dans la barre des menus : jaune en préparation ou en transcription, rouge avec la durée pendant l'enregistrement, vert quand la transcription est prête, gris en cas de problème](site/pilule.svg)
 
-Sur un Mac Apple Silicon avec macOS 15 ou plus récent, trois commandes posent une icône Réunion dans le Dock. Un clic enregistre la visio en cours, un second l'arrête et lance la transcription. Le texte arrive dans `~/Movies/Reunions`, avec une notification.
+Sur un Mac Apple Silicon avec macOS 15 ou plus récent, [Homebrew](https://brew.sh), [uv](https://docs.astral.sh/uv/) et les outils de développement d'Apple (`xcode-select --install` s'ils manquent), trois commandes posent une icône Réunion dans le Dock. Un clic enregistre la visio en cours, un second l'arrête et lance la transcription. Le texte arrive dans `~/Movies/Reunions`, avec une notification.
 
 ```sh
 brew install ffmpeg
@@ -29,12 +27,7 @@ Pour un fichier déjà enregistré : `transcription-locale transcrire entretien.
 
 ## Installation
 
-L'outil demande un Mac Apple Silicon (M1 ou plus récent), Python 3.10 ou plus récent et ffmpeg.
-
-```sh
-brew install ffmpeg
-uv tool install git+https://github.com/web-rn20/rn20-transcription-locale
-```
+L'outil demande un Mac Apple Silicon (M1 ou plus récent), Python 3.10 ou plus récent et ffmpeg, installés par les deux premières commandes de l'« En bref ». L'icône Réunion demande en plus macOS 15 et les outils de développement d'Apple, qui compilent sa petite application.
 
 `pipx install git+https://github.com/web-rn20/rn20-transcription-locale` fonctionne aussi. Les modèles de séparation des voix (environ 110 Mo) peuvent être préparés à l'avance avec `transcription-locale modeles`. Le modèle de transcription Whisper large-v3 pèse environ 3 Go et se télécharge à la première transcription.
 
