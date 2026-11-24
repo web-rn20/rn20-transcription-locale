@@ -52,6 +52,12 @@ Elles sont vérifiées à chaque revue.
 - **L'application Réunion n'est jamais refaite si elle existe.** macOS rattache l'autorisation d'enregistrer à sa signature : la reconstruire la ferait perdre sans nouvelle demande. Une modification de `Reunion.swift` ne sert donc qu'aux nouvelles installations ; changer `LANCEUR` dans `reunion.py` la ferait reconstruire chez tout le monde, à réserver à un vrai besoin et à annoncer dans le journal des versions.
 - **L'application ne fait que deux choses.** Lancer `transcription-locale reunion` et afficher le texte d'un fichier `.notification`, qu'elle efface ensuite. Aucun accès réseau, aucun autre fichier lu, aucun binaire livré tout compilé.
 
+## Publier une version
+
+1. Dans la pull request : monter `__version__` dans `transcription_locale/__init__.py` et ajouter au journal des versions une section `## X.Y.Z (date)`.
+2. Après la fusion, depuis `main` à jour : `git tag vX.Y.Z && git push origin vX.Y.Z`. Seuls les administrateurs du dépôt peuvent pousser une étiquette `v*`.
+3. L'action Release vérifie que l'étiquette, `__version__` et le journal concordent, puis publie la release avec les notes du journal. Une discordance bloque la publication.
+
 ## Proposer une modification
 
 Forker le dépôt, travailler sur une branche, ouvrir une pull request. La CI doit passer. Une modification du seuil par défaut ou des réglages de séparation s'accompagne des enregistrements de synthèse utilisés pour la mesurer et des résultats obtenus.

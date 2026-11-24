@@ -1,0 +1,30 @@
+name: Release
+
+# Pousser une etiquette vX.Y.Z (reservee aux administrateurs du depot) publie la release,
+# avec les notes du CHANGELOG, apres avoir verifie que la version du paquet concorde.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Vérifier la version et extraire les notes
+        run: python3 .github/scripts/notes_de_version.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+      - name: Publier la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME déjà publiée."
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md"

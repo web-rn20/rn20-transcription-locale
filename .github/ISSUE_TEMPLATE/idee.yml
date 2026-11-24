@@ -1,0 +1,15 @@
+name: Idée
+description: Proposer une amélioration ou un nouvel usage
+labels: [enhancement]
+body:
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Le besoin
+      description: Dans quelle situation l'outil vous manque-t-il ? Le besoin compte plus que la solution.
+    validations:
+      required: true
+  - type: textarea
+    id: piste
+    attributes:
+      label: Une piste, si vous en avez une
