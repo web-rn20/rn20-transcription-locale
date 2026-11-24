@@ -19,7 +19,7 @@ Merci de votre intérêt. Le projet est en cours de développement : une issue a
 | `transcription_locale/ressources/Reunion.swift` | Application Réunion du Dock : lance la bascule, affiche les notifications. Compilée sur chaque Mac par `raccourci` |
 | `transcription_locale/mises_a_jour.py` | Mise à jour au clic, optionnelle : lecture de la dernière release, installation (sans PyObjC) |
 | `SKILL.md` | Instructions du skill Claude Code |
-| `site/` | Illustrations partagées par le README et la future page de présentation |
+| `site/` | Page de présentation (HTML et CSS écrits à la main, publiée par `.github/workflows/site.yml` sur GitHub Pages), et ses images avec leurs crédits |
 | `SECURITY.md` | Signalement privé des failles, données traitées |
 | `.github/workflows/release.yml`, `.github/scripts/notes_de_version.py` | Publication d'une release à partir d'une étiquette `vX.Y.Z` poussée depuis `main` |
 | `tests/` | Tests unitaires, sans modèle ni réseau |
@@ -54,6 +54,10 @@ Elles sont vérifiées à chaque revue.
 - **Python 3.10 ou plus récent**, messages et documentation en français. L'enregistrement des réunions demande macOS 15.
 - **L'application Réunion n'est jamais refaite si elle existe.** macOS rattache l'autorisation d'enregistrer à sa signature : la reconstruire la ferait perdre sans nouvelle demande. Une modification de `Reunion.swift` ne sert donc qu'aux nouvelles installations ; changer `LANCEUR` dans `reunion.py` la ferait reconstruire chez tout le monde, à réserver à un vrai besoin et à annoncer dans le journal des versions.
 - **L'application ne fait que deux choses.** Lancer `transcription-locale reunion` et afficher le texte d'un fichier `.notification`, qu'elle efface ensuite. Aucun accès réseau, aucun autre fichier lu, aucun binaire livré tout compilé.
+
+## Le site
+
+Une seule page, `site/index.html`, sans dépendance ni étape de construction. Aucun traceur, aucun cookie, aucune ressource chargée depuis un autre site : la police est servie depuis `site/fonts/`. Toute image ajoutée a une licence qui permet l'usage commercial, et son crédit figure en pied de page. Les textes du menu montrés sur la page reprennent ceux de `enregistreur.py` : les mettre à jour ensemble.
 
 ## Publier une version
 

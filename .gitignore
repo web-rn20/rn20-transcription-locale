@@ -26,3 +26,6 @@ build/
 dist/
 .venv/
 .DS_Store
+
+# outil de conception du site (captures, tirage)
+.taste-skill/
