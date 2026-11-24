@@ -54,6 +54,7 @@ LANCEUR = "natif-1"
 EXECUTABLE = "Reunion"
 EXTENSION_MESSAGE = ".notification"
 DUREE_MESSAGE = 3600  # un message non lu (application absente, plantage) est efface apres
+LONGUEUR_MESSAGE = 1000  # caracteres ; l'application refuse au-dela de 4096 octets
 
 
 class ErreurReunion(Exception):
@@ -148,9 +149,14 @@ def info_app(python: str, version: str) -> dict:
 
 
 def commande_compilation(source: str, sortie: str) -> list[str]:
+    """Commande unique, reprise telle quelle par la CI : la cible suit MACOS_MINIMUM."""
     # par xcrun : il fournit le SDK de macOS, que swiftc appele directement ne trouve pas
     cible = "arm64-apple-macos" + ".".join(str(n) for n in MACOS_MINIMUM)
     return ["xcrun", "swiftc", "-O", "-target", cible, "-o", sortie, source]
+
+
+def message_court(message: str, longueur: int = LONGUEUR_MESSAGE) -> str:
+    return message if len(message) <= longueur else message[:longueur - 1] + "…"
 
 
 def commande_message(app: pathlib.Path, message: pathlib.Path) -> list[str]:
@@ -228,7 +234,7 @@ def notifier(message: str) -> None:
         try:
             dossier_messages().mkdir(parents=True, exist_ok=True)
             fichier = dossier_messages() / f"{time.time_ns()}-{os.getpid()}{EXTENSION_MESSAGE}"
-            fichier.write_text(message, encoding="utf-8")
+            fichier.write_text(message_court(message), encoding="utf-8")
             if subprocess.run(commande_message(app, fichier), capture_output=True).returncode == 0:
                 return
         except OSError:
@@ -335,19 +341,37 @@ def verifier_swiftc() -> None:
                             "transcription-locale raccourci")
 
 
+def mettre_en_place(chantier: pathlib.Path, app: pathlib.Path) -> None:
+    """Remplace app par chantier sans jamais laisser l'utilisateur sans application :
+    l'ancienne est mise de cote, et remise en place si le remplacement echoue."""
+    import shutil
+
+    ancienne = app.with_name(f".{app.name}.ancienne")
+    shutil.rmtree(ancienne, ignore_errors=True)
+    try:
+        if app.exists():
+            os.rename(app, ancienne)
+        os.rename(chantier, app)
+    except OSError as e:
+        if ancienne.exists() and not app.exists():
+            os.rename(ancienne, app)
+        raise ErreurReunion(f"remplacement de {app} impossible : {e}") from e
+    shutil.rmtree(ancienne, ignore_errors=True)
+
+
 def creer_app(app: pathlib.Path) -> None:
     """Compile l'application dans un dossier voisin, puis la met en place d'un coup : une
-    compilation ratee laisse l'application precedente intacte."""
+    compilation ou un remplacement rate laisse l'application precedente intacte."""
     import shutil
     from importlib.resources import as_file, files
 
     from . import __version__
 
     verifier_swiftc()
-    app.parent.mkdir(parents=True, exist_ok=True)
     chantier = app.with_name(f".{app.name}.construction")
-    shutil.rmtree(chantier, ignore_errors=True)
     try:
+        app.parent.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(chantier, ignore_errors=True)
         macos = chantier / "Contents" / "MacOS"
         ressources = chantier / "Contents" / "Resources"
         macos.mkdir(parents=True)
@@ -368,8 +392,9 @@ def creer_app(app: pathlib.Path) -> None:
         if signature.returncode != 0:
             raise ErreurReunion(f"signature de l'application impossible : "
                                 f"{signature.stderr.strip()}")
-        shutil.rmtree(app, ignore_errors=True)
-        chantier.rename(app)
+        mettre_en_place(chantier, app)
+    except OSError as e:
+        raise ErreurReunion(f"construction de {app} impossible : {e}") from e
     finally:
         shutil.rmtree(chantier, ignore_errors=True)
     # LaunchServices relit l'application (icone, type .notification)
@@ -395,7 +420,8 @@ def installer(dock: bool = True, reconstruire: bool = False) -> list[str]:
             faits.append("Application refaite : macOS redemandera l'autorisation d'enregistrer. "
                          "Si la demande n'apparaît pas, ajouter Réunion par « + » dans Réglages > "
                          "Confidentialité et sécurité > Enregistrement de l'écran et audio "
-                         "système, depuis ~/Applications.")
+                         "système, depuis ~/Applications. Si une ancienne ligne Réunion y "
+                         "figure, la retirer d'abord.")
     else:
         faits.append(f"Application déjà en place, autorisations conservées : {app}")
 

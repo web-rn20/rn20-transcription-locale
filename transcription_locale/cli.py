@@ -159,7 +159,9 @@ def commande_raccourci(args: argparse.Namespace) -> int:
                                              else "désactivées (--mises-a-jour pour les activer)"))
     print("\n".join(faits))
     info("Au premier clic sur Réunion, macOS demande l'autorisation d'enregistrer l'écran et "
-         "l'audio système, puis le micro : accepter, puis recliquer sur Réunion.")
+         "l'audio système, puis le micro : accepter, puis recliquer sur Réunion. À la première "
+         "notification, il demande aussi d'autoriser celles de Réunion ; si cette demande "
+         "disparaît sans réponse, les autoriser dans Réglages > Notifications > Réunion.")
     return 0
 
 
