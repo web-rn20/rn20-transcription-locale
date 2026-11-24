@@ -34,6 +34,8 @@ REGLAGES = "x-apple.systempreferences:com.apple.preference.security?Privacy_Scre
 REFUS_TCC = -3801  # SCStreamErrorUserDeclined : l'autorisation manque
 DELAI_FINALISATION = 60.0
 DELAI_INSTALLATION = 300.0
+# la pilule verte s'efface seule : la notification et le Finder ont deja montre le texte
+DELAI_PRETE = 60.0
 COULEUR_ETAT = {"preparation": "attente", "enregistrement": "enregistrement",
                 "finalisation": "attente", "transcription": "attente",
                 "prete": "prete", "echec": "echec", "installation": "attente"}
@@ -74,6 +76,7 @@ class Enregistreur(rumps.App):
         self.installation: Optional[subprocess.Popen] = None
         self.etat_avant_installation = "prete"
         self.debut_installation = 0.0
+        self.debut_prete = 0.0
         self.erreur_maj = ""
         reunion.dossier_enregistrements().mkdir(parents=True, exist_ok=True)
         self.video = reunion.dossier_enregistrements() / reunion.nom_enregistrement(
@@ -126,8 +129,11 @@ class Enregistreur(rumps.App):
                     None,
                     rumps.MenuItem("Annuler la mise à jour", callback=self.annuler_mise_a_jour)]
         if e == "prete":
+            fermeture = ([] if self.reste_ouverte()
+                         else self.infos("Ce badge s'efface seul dans une minute."))
             return [*self.infos("Transcription prête"),
                     *self.infos(self.texte().name),
+                    *fermeture,
                     None,
                     rumps.MenuItem("Ouvrir la transcription", callback=self.ouvrir_texte),
                     rumps.MenuItem("Afficher dans le Finder", callback=self.afficher_finder),
@@ -145,6 +151,11 @@ class Enregistreur(rumps.App):
                 *self.lignes_mise_a_jour(),
                 None,
                 rumps.MenuItem("Fermer", callback=self.fermer)]
+
+    def reste_ouverte(self) -> bool:
+        """Une mise a jour proposee garde la pilule : son menu est le seul endroit ou
+        l'installer."""
+        return self.maj is not None
 
     def lignes_mise_a_jour(self) -> list:
         """Proposee seulement une fois la transcription finie (pret ou echec), jamais avant."""
@@ -194,6 +205,11 @@ class Enregistreur(rumps.App):
         if self.etat == "finalisation" and time.time() - self.debut_fin > DELAI_FINALISATION:
             self.echec("L'enregistrement ne s'est pas terminé correctement. Le fichier est "
                        "peut-être incomplet, dans le dossier des réunions.")
+        if (self.etat == "prete" and not self.reste_ouverte()
+                and time.time() - self.debut_prete > DELAI_PRETE):
+            log("transcription prête depuis une minute, fermeture")
+            self.fermer()
+            return
         if self.etat == "installation":
             if self.installation.poll() is not None:
                 self.fin_installation(self.installation.returncode)
@@ -205,6 +221,8 @@ class Enregistreur(rumps.App):
             log("transcription terminée, code", code)
             if code == 0 and self.texte().is_file():
                 reunion.notifier(f"Transcription prête : {self.texte().name}")
+                subprocess.run(["open", "-R", str(self.texte())])  # le Finder montre le texte
+                self.debut_prete = time.time()
                 self.changer("prete")
             else:
                 self.echec("La transcription a échoué. Le journal donne le détail.")
@@ -275,6 +293,7 @@ class Enregistreur(rumps.App):
         log("installation terminée, code", code)
         if code == 0:
             self.maj_installee, self.maj = self.maj.numero, None
+            self.debut_prete = time.time()  # une minute pour lire « Version installée »
             self.changer(self.etat_avant_installation)
             reunion.notifier(f"Réunion {self.maj_installee} installée. Elle servira au "
                              f"prochain enregistrement.")
