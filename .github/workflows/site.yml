@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read  # deploy-pages retrouve l'archive du site par l'API des artefacts
   pages: write
   id-token: write
 
