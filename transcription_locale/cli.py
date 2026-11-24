@@ -143,6 +143,7 @@ def preparer_modeles() -> list[str]:
 
     if not whisper_en_cache():
         info("Téléchargement du modèle Whisper large-v3 (environ 3 Go, une seule fois) :")
+    info("Vérification de l'empreinte du modèle Whisper (quelques secondes)…")
     chemins = [preparer_whisper()]
     chemins += chemins_modeles()
     return chemins

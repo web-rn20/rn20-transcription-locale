@@ -72,9 +72,12 @@ class Delegue(Foundation.NSObject):
 
 
 class Enregistreur(rumps.App):
-    def __init__(self, mode: str = "reunion") -> None:
+    def __init__(self, mode: str = "reunion", relance: bool = False) -> None:
         super().__init__(reunion.TITRE, title="", quit_button=None)
         self.mode = mode  # "reunion" ou "essai"
+        # lance apres « autorisation recue » : un nouveau refus ne relance plus, il s'affiche
+        self.relance = relance
+        self.remplacement = False  # un enregistreur neuf est en train de prendre la main
         self.essai_ok = False
         self.essai_lignes: list[str] = []
         self.parole_annoncee = False
@@ -259,6 +262,7 @@ class Enregistreur(rumps.App):
 
     def echec(self, texte: str, reglages: bool = False) -> None:
         self.erreur, self.reglages = texte, reglages
+        self.effacer_essai()
         reunion.notifier(texte)
         self.changer("echec")
 
@@ -410,9 +414,31 @@ class Enregistreur(rumps.App):
             self.mode = mode
             self.demarrer()
             return
-        liberer_pid()
-        lancer_detache(mode)
-        rumps.quit_application()
+        self.remplacer(["--essai"] if mode == "essai" else [])
+
+    def remplacer(self, options: list[str]) -> None:
+        """Passe la main a un enregistreur neuf, puis quitte. La relance tient le verrou de la
+        bascule jusqu'a ce que le nouveau soit pret : un clic sur le Dock entre-temps attend,
+        puis s'adresse a lui. Dans un fil a part, pour ne pas figer le menu."""
+        if self.remplacement:
+            return
+        self.remplacement = True
+
+        def relance():
+            try:
+                reunion.remplacer_enregistreur(options, liberer_pid)
+            except reunion.ErreurReunion as e:
+                log("relance impossible :", e)
+                callAfter(self.relance_ratee, str(e))
+                return
+            callAfter(rumps.quit_application)
+        threading.Thread(target=relance, daemon=True).start()
+
+    def relance_ratee(self, texte: str) -> None:
+        self.remplacement = False
+        # le PID a ete libere : on le reprend, pour que le Dock retrouve cet enregistreur
+        reunion.fichier_pid().write_text(str(os.getpid()))
+        self.echec(f"Relance impossible : {texte}")
 
     def ouvrir_journal(self, _item) -> None:
         journal = self.journal_transcription()
@@ -421,8 +447,15 @@ class Enregistreur(rumps.App):
 
     def fermer(self, _item=None) -> None:
         # quit_application quitte sans repasser par Python : on libere le PID avant
+        self.effacer_essai()
         liberer_pid()
         rumps.quit_application()
+
+    def effacer_essai(self) -> None:
+        """L'essai contient la voix de l'utilisateur : il ne survit ni a un echec ni a la
+        fermeture."""
+        if self.mode == "essai":
+            reunion.fichier_essai().unlink(missing_ok=True)
 
     # --- capture ----------------------------------------------------------------------------
 
@@ -443,6 +476,14 @@ class Enregistreur(rumps.App):
     def refus(self) -> None:
         """Autorisation absente : les Reglages s'ouvrent au bon endroit, et l'enregistreur
         attend que Reunion y soit coche pour repartir tout seul."""
+        if self.relance:
+            # macOS a dit oui au processus de controle, mais refuse encore la capture : on ne
+            # boucle pas, on le dit
+            log("autorisation toujours refusée après la relance")
+            self.echec("macOS ne prend pas encore en compte l'autorisation. Dans les Réglages, "
+                       "vérifier que Réunion est activé, puis recliquer sur Réunion dans le Dock.",
+                       reglages=True)
+            return
         log("autorisation d'enregistrer absente, attente dans les Réglages")
         self.debut_autorisation = time.time()
         self.changer("autorisation")
@@ -462,9 +503,8 @@ class Enregistreur(rumps.App):
                 log("autorisation reçue, relance")
                 reunion.notifier("Autorisation reçue. " + ("L'essai démarre."
                                  if self.mode == "essai" else "L'enregistrement démarre."))
-                liberer_pid()
-                lancer_detache(self.mode)
-                rumps.quit_application()
+                self.changer("preparation")  # plus de nouvelle lecture pendant la relance
+                self.remplacer(["--relance"] + (["--essai"] if self.mode == "essai" else []))
                 return
         if lecture is None and time.time() - self.derniere_lecture >= INTERVALLE_AUTORISATION:
             self.derniere_lecture = time.time()
@@ -564,8 +604,9 @@ class Enregistreur(rumps.App):
         self.changer("mesure")
 
         def mesure():
-            resultat = reunion.mesurer_essai(self.video)
-            callAfter(self.essai_mesure, *resultat)
+            ok, lignes, niveaux = reunion.mesurer_essai(self.video)
+            log("niveaux de l'essai :", niveaux)
+            callAfter(self.essai_mesure, ok, lignes)
         threading.Thread(target=mesure, daemon=True).start()
 
     def essai_mesure(self, ok: bool, lignes: list[str]) -> None:
@@ -678,23 +719,24 @@ def marquer_bienvenue() -> None:
         pass
 
 
+def commande_son_essai() -> list[str]:
+    """afplay -t coupe le son a FIN_SON_ESSAI : il ne deborde jamais sur le moment du micro."""
+    return ["afplay", "-t", f"{reunion.FIN_SON_ESSAI - reunion.DEBUT_SON_ESSAI:g}",
+            reunion.SON_ESSAI]
+
+
 def jouer_son_essai() -> None:
-    """Le son de l'essai, joue par un autre programme : Reunion exclut son propre son de la
-    capture. Repete pour couvrir le premier moment de l'essai."""
-    commande = f"for i in 1 2 3; do afplay '{reunion.SON_ESSAI}'; sleep 0.4; done"
-    subprocess.Popen(["/bin/sh", "-c", commande], stdin=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-
-
-def lancer_detache(mode: str) -> None:
-    """Un enregistreur neuf, detache. Lance d'ici, il garde l'autorisation de Reunion."""
-    arguments = [sys.executable, "-m", reunion.MODULE_ENREGISTREUR]
-    if mode == "essai":
-        arguments.append("--essai")
-    with open(reunion.dossier_journaux() / "reunion.log", "a", encoding="utf-8") as sortie:
-        subprocess.Popen(arguments, stdin=subprocess.DEVNULL, stdout=sortie,
-                         stderr=subprocess.STDOUT, start_new_session=True,
-                         env=reunion.environnement())
+    """Le son de l'essai, joue par un autre programme (Reunion exclut son propre son de la
+    capture), apres le silence de reference."""
+    def jouer():
+        time.sleep(reunion.DEBUT_SON_ESSAI)
+        try:
+            subprocess.run(commande_son_essai(), stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=reunion.DUREE_ESSAI)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log("son de l'essai impossible :", e)
+    threading.Thread(target=jouer, daemon=True).start()
 
 
 def liberer_pid() -> None:
@@ -711,8 +753,10 @@ def main() -> int:
     AppKit.NSApplication.sharedApplication().setActivationPolicy_(
         AppKit.NSApplicationActivationPolicyAccessory)
     essai = "--essai" in sys.argv[1:]
-    premier = not essai and not reunion.fichier_bienvenue().exists()
-    app = Enregistreur("essai" if essai else "reunion")
+    premier = not essai and not reunion.deja_accueilli()
+    # un essai laisse par un plantage n'attend pas le suivant pour disparaitre
+    reunion.fichier_essai().unlink(missing_ok=True)
+    app = Enregistreur("essai" if essai else "reunion", relance="--relance" in sys.argv[1:])
     # le gestionnaire Python tourne entre deux tics de l'horloge, sur le fil principal.
     # Il est pose AVANT d'ecrire le PID : la bascule n'envoie le signal qu'a un enregistreur
     # qui sait le recevoir (par defaut, SIGUSR1 tue le processus).

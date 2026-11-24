@@ -34,7 +34,7 @@ import sys
 import textwrap
 import time
 import unicodedata
-from typing import Optional
+from typing import Callable, Optional, Sequence
 from urllib.parse import quote
 
 TITRE = "Réunion"
@@ -56,14 +56,19 @@ EXECUTABLE = "Reunion"
 EXTENSION_MESSAGE = ".notification"
 DUREE_MESSAGE = 3600  # un message non lu (application absente, plantage) est efface apres
 LONGUEUR_MESSAGE = 1000  # caracteres ; l'application refuse au-dela de 4096 octets
-# Essai de 10 secondes. La capture melange le son de l'ordinateur et le micro sur une seule
-# piste : on les verifie l'un apres l'autre. Un son joue d'abord sur le Mac pendant que
-# l'utilisateur se tait, puis il parle ; on mesure le niveau de chaque moment.
-DUREE_ESSAI_SON = 4.0
+# Essai de 10 secondes. On verifie le son de l'ordinateur puis le micro l'un apres l'autre :
+# un court silence sert de reference, un son joue sur le Mac pendant que l'utilisateur se
+# tait, puis il parle. On mesure le niveau de chaque moment, toutes pistes audio melangees.
+DUREE_ESSAI_SON = 4.0  # « Parlez maintenant » a cet instant
 DUREE_ESSAI = 10.0
-SON_ESSAI = "/System/Library/Sounds/Glass.aiff"
+SON_ESSAI = "/System/Library/Sounds/Glass.aiff"  # 1,65 s
+DEBUT_SON_ESSAI = 1.0  # apres le demarrage de la capture : le silence de reference le precede
+FIN_SON_ESSAI = 3.0  # le son est coupe au plus tard ici, bien avant le moment du micro
 NIVEAU_MINIMUM = -45.0  # dB : en dessous, rien n'a ete capte (le silence numerique est vers -90)
-MARGE_ESSAI = 0.5  # secondes ecartees autour de la bascule entre les deux moments
+# Le son doit depasser le silence de reference d'au moins cet ecart : le bruit de la piece,
+# entendu par le micro, ne passe pas pour le son de l'ordinateur.
+ECART_SON = 10.0
+MARGE_ESSAI = 0.5  # secondes ecartees autour de la bascule entre les moments
 
 
 class ErreurReunion(Exception):
@@ -193,10 +198,16 @@ def commande_extraction(video: str, audio: str, nb_pistes: int) -> list[str]:
                     "-c:a", "aac", "-b:a", "160k", audio]
 
 
-def commande_niveau(fichier: str, debut: float, fin: float) -> list[str]:
-    """ffmpeg : niveau maximal du son entre deux instants (volumedetect, sur la sortie d'erreur)."""
-    return ["ffmpeg", "-nostdin", "-hide_banner", "-i", fichier, "-vn",
-            "-af", f"atrim=start={debut:g}:end={fin:g},volumedetect", "-f", "null", "-"]
+def commande_niveau(fichier: str, debut: float, fin: float, nb_pistes: int = 1) -> list[str]:
+    """ffmpeg : niveau maximal du son entre deux instants (volumedetect, sur la sortie
+    d'erreur). Plusieurs pistes (ordinateur et micro separes) sont d'abord melangees, comme
+    pour la transcription : chacune compte."""
+    mesure = f"atrim=start={debut:g}:end={fin:g},volumedetect"
+    debut_commande = ["ffmpeg", "-nostdin", "-hide_banner", "-i", fichier]
+    if nb_pistes <= 1:
+        return debut_commande + ["-vn", "-af", mesure, "-f", "null", "-"]
+    return debut_commande + ["-filter_complex",
+                             f"amix=inputs={nb_pistes}:normalize=0,{mesure}", "-f", "null", "-"]
 
 
 def lire_niveau(sortie_ffmpeg: str) -> Optional[float]:
@@ -207,18 +218,19 @@ def lire_niveau(sortie_ffmpeg: str) -> Optional[float]:
     return float("-inf") if "inf" in trouve.group(1) else float(trouve.group(1))
 
 
-def fenetres_essai() -> tuple[tuple[float, float], tuple[float, float]]:
-    """(son de l'ordinateur, micro) : les deux moments mesures dans l'essai."""
-    return ((MARGE_ESSAI, DUREE_ESSAI_SON - MARGE_ESSAI),
+def fenetres_essai() -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """(silence de reference, son de l'ordinateur, micro) : les moments mesures dans l'essai."""
+    return ((0.2, DEBUT_SON_ESSAI - 0.1),
+            (DEBUT_SON_ESSAI, DUREE_ESSAI_SON - MARGE_ESSAI),
             (DUREE_ESSAI_SON + MARGE_ESSAI, DUREE_ESSAI - MARGE_ESSAI))
 
 
-def verdict_essai(son: Optional[float], micro: Optional[float]) -> tuple[bool, list[str]]:
-    """(tout va bien, lignes du menu) d'apres le niveau des deux moments de l'essai."""
-    if son is None and micro is None:
-        return False, ["Mesure impossible : ffmpeg est-il installé ? (brew install ffmpeg, "
-                       "puis refaire l'essai)"]
-    son_ok = son is not None and son > NIVEAU_MINIMUM
+def verdict_essai(silence: Optional[float], son: Optional[float],
+                  micro: Optional[float]) -> tuple[bool, list[str]]:
+    """(tout va bien, lignes du message) d'apres le niveau des moments de l'essai. None : rien
+    de mesurable (pas de piste audio, ou fichier trop court)."""
+    son_ok = (son is not None and son > NIVEAU_MINIMUM
+              and (silence is None or son >= silence + ECART_SON))
     micro_ok = micro is not None and micro > NIVEAU_MINIMUM
     lignes = [
         "Son de l'ordinateur : capté." if son_ok else
@@ -233,6 +245,12 @@ def verdict_essai(son: Optional[float], micro: Optional[float]) -> tuple[bool, l
         lignes.append("Avec un casque, l'essai du son de l'ordinateur est le plus sûr : sans "
                       "casque, le micro peut aussi entendre les haut-parleurs.")
     return son_ok and micro_ok, lignes
+
+
+def niveaux_lisibles(niveaux: tuple[Optional[float], ...]) -> str:
+    """Pour le journal : « silence -62.1 dB, son -14.3 dB, micro -21.0 dB »."""
+    noms = ("silence", "son", "micro")
+    return ", ".join(f"{nom} {'?' if n is None else f'{n:.1f} dB'}" for nom, n in zip(noms, niveaux))
 
 
 def arguments_transcription(audio: pathlib.Path) -> list[str]:
@@ -324,15 +342,16 @@ def enregistreur_actif() -> Optional[int]:
     return pid if MODULE_ENREGISTREUR in commande else None
 
 
-def lancer_enregistreur(delai: float = DELAI_DEMARRAGE) -> bool:
+def lancer_enregistreur(delai: float = DELAI_DEMARRAGE, options: Sequence[str] = ()) -> bool:
     """Enregistreur detache, puis attente qu'il soit pret (fichier PID ecrit). Faux si
-    l'attente depasse le delai : il demarre encore, ou il a echoue (voir reunion.log)."""
+    l'attente depasse le delai : il demarre encore, ou il a echoue (voir reunion.log).
+    A appeler sous le verrou de la bascule : jamais deux enregistreurs en meme temps."""
     journaux = dossier_journaux()
     journaux.mkdir(parents=True, exist_ok=True)
     try:
         with open(journaux / "reunion.log", "a", encoding="utf-8") as sortie:
             processus = subprocess.Popen(
-                [sys.executable, "-m", MODULE_ENREGISTREUR], stdin=subprocess.DEVNULL,
+                [sys.executable, "-m", MODULE_ENREGISTREUR, *options], stdin=subprocess.DEVNULL,
                 stdout=sortie, stderr=subprocess.STDOUT, start_new_session=True,
                 env=environnement())
     except OSError as e:
@@ -376,6 +395,28 @@ def basculer() -> str:
             return ("Démarrage d'un nouvel enregistrement." if lancer_enregistreur()
                     else "Démarrage en cours.")
         return "Demande transmise à l'enregistreur en cours."
+
+
+def remplacer_enregistreur(options: Sequence[str], liberer: Callable[[], None]) -> bool:
+    """L'enregistreur courant passe la main a un neuf (nouvel essai, autorisation recue),
+    sous le verrou de la bascule : un clic sur le Dock pendant la relance attend que le
+    nouveau soit pret et s'adresse a lui, au lieu d'en lancer un second."""
+    dossier_etat().mkdir(parents=True, exist_ok=True)
+    with open(fichier_verrou(), "w") as verrou:
+        fcntl.flock(verrou, fcntl.LOCK_EX)
+        liberer()
+        return lancer_enregistreur(options=options)
+
+
+def deja_accueilli() -> bool:
+    """L'accueil est passe, ou Reunion servait deja avant lui (mise a jour depuis 0.4) :
+    un clic sur le Dock doit alors enregistrer tout de suite, pas ouvrir l'accueil."""
+    if fichier_bienvenue().exists():
+        return True
+    try:
+        return any(dossier_enregistrements().glob("Reunion *"))
+    except OSError:
+        return False
 
 
 # --- installation ---------------------------------------------------------------------------
@@ -533,22 +574,31 @@ def extraire_audio(video: pathlib.Path) -> pathlib.Path:
     return video
 
 
-def mesurer_niveau(fichier: pathlib.Path, debut: float, fin: float) -> Optional[float]:
+def mesurer_niveau(fichier: pathlib.Path, debut: float, fin: float,
+                   nb_pistes: int = 1) -> Optional[float]:
+    """Niveau maximal entre deux instants, None si rien n'est mesurable. OSError si ffmpeg
+    manque."""
     try:
-        mesure = subprocess.run(commande_niveau(str(fichier), debut, fin), capture_output=True,
-                                text=True, env=environnement(), timeout=60)
-    except (OSError, subprocess.TimeoutExpired):
+        mesure = subprocess.run(commande_niveau(str(fichier), debut, fin, nb_pistes),
+                                capture_output=True, text=True, env=environnement(), timeout=60)
+    except subprocess.TimeoutExpired:
         return None
     return lire_niveau(mesure.stderr)
 
 
-def mesurer_essai(fichier: pathlib.Path) -> tuple[bool, list[str]]:
-    """Mesure l'essai, puis l'efface : il ne contient que dix secondes de test."""
+def mesurer_essai(fichier: pathlib.Path) -> tuple[bool, list[str], str]:
+    """(tout va bien, lignes du message, niveaux pour le journal). L'essai est efface
+    ensuite : il ne contient que dix secondes de test."""
     try:
-        (s0, s1), (m0, m1) = fenetres_essai()
-        return verdict_essai(mesurer_niveau(fichier, s0, s1), mesurer_niveau(fichier, m0, m1))
+        pistes = nombre_de_pistes_audio(fichier)
+        niveaux = tuple(mesurer_niveau(fichier, debut, fin, pistes)
+                        for debut, fin in fenetres_essai())
+    except OSError:
+        return False, ["Mesure impossible : ffmpeg est introuvable (brew install ffmpeg, puis "
+                       "refaire l'essai)."], "ffmpeg introuvable"
     finally:
         fichier.unlink(missing_ok=True)
+    return (*verdict_essai(*niveaux), niveaux_lisibles(niveaux))
 
 
 def apres_enregistrement(video: str) -> int:
