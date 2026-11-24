@@ -8,6 +8,8 @@ Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/). Tant q
 - Autorisation guidée : sans autorisation d'enregistrer, Réunion ouvre les Réglages au bon endroit et démarre tout seul dès que Réunion y est activé, sans recliquer.
 - `raccourci` télécharge d'avance Whisper (environ 3 Go) et les modèles de séparation des voix ; `--sans-modeles` pour s'en passer. `modeles` prépare aussi Whisper.
 - Nouvelle commande `verifier` : prérequis, application, modèles, chacun avec la commande qui le répare.
+- Whisper se télécharge dans une version figée, vérifiée par l'empreinte SHA-256 de ses fichiers, comme les modèles de séparation des voix.
+- Mise à jour depuis 0.4 : l'accueil ne s'affiche pas si des réunions ont déjà été enregistrées ; le premier clic enregistre comme avant.
 
 ## 0.4.1 (2026-11-24)
 
