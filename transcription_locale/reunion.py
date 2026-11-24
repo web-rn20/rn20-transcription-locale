@@ -27,6 +27,7 @@ import os
 import pathlib
 import platform
 import plistlib
+import re
 import signal
 import subprocess
 import sys
@@ -55,6 +56,14 @@ EXECUTABLE = "Reunion"
 EXTENSION_MESSAGE = ".notification"
 DUREE_MESSAGE = 3600  # un message non lu (application absente, plantage) est efface apres
 LONGUEUR_MESSAGE = 1000  # caracteres ; l'application refuse au-dela de 4096 octets
+# Essai de 10 secondes. La capture melange le son de l'ordinateur et le micro sur une seule
+# piste : on les verifie l'un apres l'autre. Un son joue d'abord sur le Mac pendant que
+# l'utilisateur se tait, puis il parle ; on mesure le niveau de chaque moment.
+DUREE_ESSAI_SON = 4.0
+DUREE_ESSAI = 10.0
+SON_ESSAI = "/System/Library/Sounds/Glass.aiff"
+NIVEAU_MINIMUM = -45.0  # dB : en dessous, rien n'a ete capte (le silence numerique est vers -90)
+MARGE_ESSAI = 0.5  # secondes ecartees autour de la bascule entre les deux moments
 
 
 class ErreurReunion(Exception):
@@ -86,6 +95,16 @@ def fichier_pid() -> pathlib.Path:
 
 def fichier_verrou() -> pathlib.Path:
     return dossier_etat() / "bascule.lock"
+
+
+def fichier_bienvenue() -> pathlib.Path:
+    """Present une fois l'accueil passe : il ne s'affiche qu'au tout premier lancement."""
+    return dossier_etat() / "bienvenue-vue"
+
+
+def fichier_essai() -> pathlib.Path:
+    """L'enregistrement de l'essai, efface des qu'il est mesure."""
+    return dossier_etat() / "essai.mov"
 
 
 def dossier_messages() -> pathlib.Path:
@@ -172,6 +191,48 @@ def commande_extraction(video: str, audio: str, nb_pistes: int) -> list[str]:
         return debut + ["-c:a", "copy", audio]
     return debut + ["-filter_complex", f"amix=inputs={nb_pistes}:normalize=0",
                     "-c:a", "aac", "-b:a", "160k", audio]
+
+
+def commande_niveau(fichier: str, debut: float, fin: float) -> list[str]:
+    """ffmpeg : niveau maximal du son entre deux instants (volumedetect, sur la sortie d'erreur)."""
+    return ["ffmpeg", "-nostdin", "-hide_banner", "-i", fichier, "-vn",
+            "-af", f"atrim=start={debut:g}:end={fin:g},volumedetect", "-f", "null", "-"]
+
+
+def lire_niveau(sortie_ffmpeg: str) -> Optional[float]:
+    """max_volume en dB lu dans la sortie de volumedetect, ou None s'il manque."""
+    trouve = re.search(r"max_volume:\s*(-?inf|-?\d+(?:\.\d+)?)\s*dB", sortie_ffmpeg)
+    if not trouve:
+        return None
+    return float("-inf") if "inf" in trouve.group(1) else float(trouve.group(1))
+
+
+def fenetres_essai() -> tuple[tuple[float, float], tuple[float, float]]:
+    """(son de l'ordinateur, micro) : les deux moments mesures dans l'essai."""
+    return ((MARGE_ESSAI, DUREE_ESSAI_SON - MARGE_ESSAI),
+            (DUREE_ESSAI_SON + MARGE_ESSAI, DUREE_ESSAI - MARGE_ESSAI))
+
+
+def verdict_essai(son: Optional[float], micro: Optional[float]) -> tuple[bool, list[str]]:
+    """(tout va bien, lignes du menu) d'apres le niveau des deux moments de l'essai."""
+    if son is None and micro is None:
+        return False, ["Mesure impossible : ffmpeg est-il installé ? (brew install ffmpeg, "
+                       "puis refaire l'essai)"]
+    son_ok = son is not None and son > NIVEAU_MINIMUM
+    micro_ok = micro is not None and micro > NIVEAU_MINIMUM
+    lignes = [
+        "Son de l'ordinateur : capté." if son_ok else
+        "Son de l'ordinateur : rien capté. Vérifiez que le volume du Mac n'est pas coupé, "
+        "et que Réunion est coché dans Réglages > Confidentialité et sécurité > "
+        "Enregistrement de l'écran et audio système.",
+        "Micro : capté." if micro_ok else
+        "Micro : rien capté. Vérifiez le micro choisi dans Réglages > Son > Entrée, et que "
+        "Réunion est coché dans Réglages > Confidentialité et sécurité > Micro.",
+    ]
+    if son_ok and micro_ok:
+        lignes.append("Avec un casque, l'essai du son de l'ordinateur est le plus sûr : sans "
+                      "casque, le micro peut aussi entendre les haut-parleurs.")
+    return son_ok and micro_ok, lignes
 
 
 def arguments_transcription(audio: pathlib.Path) -> list[str]:
@@ -470,6 +531,24 @@ def extraire_audio(video: pathlib.Path) -> pathlib.Path:
           file=sys.stderr)
     audio.unlink(missing_ok=True)
     return video
+
+
+def mesurer_niveau(fichier: pathlib.Path, debut: float, fin: float) -> Optional[float]:
+    try:
+        mesure = subprocess.run(commande_niveau(str(fichier), debut, fin), capture_output=True,
+                                text=True, env=environnement(), timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return lire_niveau(mesure.stderr)
+
+
+def mesurer_essai(fichier: pathlib.Path) -> tuple[bool, list[str]]:
+    """Mesure l'essai, puis l'efface : il ne contient que dix secondes de test."""
+    try:
+        (s0, s1), (m0, m1) = fenetres_essai()
+        return verdict_essai(mesurer_niveau(fichier, s0, s1), mesurer_niveau(fichier, m0, m1))
+    finally:
+        fichier.unlink(missing_ok=True)
 
 
 def apres_enregistrement(video: str) -> int:

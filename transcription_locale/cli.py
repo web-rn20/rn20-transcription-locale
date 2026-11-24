@@ -137,11 +137,31 @@ def commande_locuteurs(args: argparse.Namespace) -> int:
     return 0
 
 
+def preparer_modeles() -> list[str]:
+    """Whisper (environ 3 Go) et les modeles de separation des voix, telecharges une fois."""
+    from .transcription import preparer_whisper, whisper_en_cache
+
+    if not whisper_en_cache():
+        info("Téléchargement du modèle Whisper large-v3 (environ 3 Go, une seule fois) :")
+    chemins = [preparer_whisper()]
+    chemins += chemins_modeles()
+    return chemins
+
+
 def commande_modeles(_args: argparse.Namespace) -> int:
-    for chemin in chemins_modeles():
+    for chemin in preparer_modeles():
         print(chemin)
-    info(f"Modèles de séparation des voix prêts dans {dossier_modeles()}")
+    info(f"Modèles prêts : Whisper dans le cache de Hugging Face, séparation des voix dans "
+         f"{dossier_modeles()}")
     return 0
+
+
+def commande_verifier(_args: argparse.Namespace) -> int:
+    from .verification import constater, rapport
+
+    texte, complet = rapport(constater())
+    print(texte)
+    return 0 if complet else 1
 
 
 def commande_reunion(_args: argparse.Namespace) -> int:
@@ -157,11 +177,19 @@ def commande_raccourci(args: argparse.Namespace) -> int:
         mises_a_jour.choisir(args.mises_a_jour)
     faits.append("Mises à jour au clic : " + ("activées" if mises_a_jour.activees()
                                              else "désactivées (--mises-a-jour pour les activer)"))
-    print("\n".join(faits))
-    info("Au premier clic sur Réunion, macOS demande l'autorisation d'enregistrer l'écran et "
-         "l'audio système, puis le micro : accepter, puis recliquer sur Réunion. À la première "
-         "notification, il demande aussi d'autoriser celles de Réunion ; si cette demande "
-         "disparaît sans réponse, les autoriser dans Réglages > Notifications > Réunion.")
+    print("\n".join(faits), flush=True)
+    if not args.sans_modeles:
+        # d'avance : sinon la premiere reunion attend 3 Go de telechargement, badge jaune
+        try:
+            preparer_modeles()
+            print("Modèles prêts : la première transcription démarrera tout de suite.")
+        except (ErreurModele, ErreurTranscription) as e:
+            info(f"Modèles non téléchargés ({e}). Ils le seront à la première transcription, "
+                 f"ou avec transcription-locale modeles.")
+    info("Prochaine étape : cliquez sur Réunion dans le Dock. Un essai de 10 secondes vous "
+         "est proposé ; macOS demande alors d'autoriser l'enregistrement de l'écran et du son, "
+         "le micro et les notifications. Si les Réglages s'ouvrent, activez Réunion : "
+         "l'essai repart tout seul.")
     return 0
 
 
@@ -204,8 +232,13 @@ def construire_parser() -> argparse.ArgumentParser:
     ajouter_options_locuteurs(p)
     p.set_defaults(action=commande_locuteurs)
 
-    p = commandes.add_parser("modeles", help="télécharge et vérifie les modèles de séparation des voix")
+    p = commandes.add_parser("modeles", help="télécharge d'avance Whisper et les modèles de "
+                                              "séparation des voix")
     p.set_defaults(action=commande_modeles)
+
+    p = commandes.add_parser("verifier", help="vérifie les prérequis et dit comment réparer "
+                                               "ce qui manque")
+    p.set_defaults(action=commande_verifier)
 
     p = commandes.add_parser("reunion", help="démarre l'enregistrement d'une réunion, "
                                              "ou l'arrête et lance la transcription")
@@ -213,6 +246,9 @@ def construire_parser() -> argparse.ArgumentParser:
 
     p = commandes.add_parser("raccourci", help="ajoute l'icône Réunion au Dock")
     p.add_argument("--sans-dock", action="store_true", help="crée l'application sans l'épingler")
+    p.add_argument("--sans-modeles", action="store_true",
+                   help="ne télécharge pas les modèles maintenant (environ 3 Go), mais à la "
+                        "première transcription")
     p.add_argument("--reconstruire", action="store_true",
                    help="refait l'application même si elle existe (macOS redemandera "
                         "l'autorisation d'enregistrer)")

@@ -109,6 +109,12 @@ def installer(modele: Modele, dossier: str) -> str:
     return chemin
 
 
+def modeles_presents() -> bool:
+    """Les modeles de separation sont-ils deja installes ? Sans reseau."""
+    dossier = dossier_modeles()
+    return all(os.path.isfile(os.path.join(dossier, m.fichier)) for m in MODELES)
+
+
 def chemins_modeles() -> tuple[str, str]:
     """(segmentation, empreinte) : chemins locaux, telecharges au premier usage."""
     dossier = dossier_modeles()

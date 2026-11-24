@@ -29,6 +29,29 @@ class ErreurTranscription(Exception):
     """MLX indisponible sur cette machine, ou transcription en echec."""
 
 
+def whisper_en_cache(modele: str = MODELE_DEFAUT) -> bool:
+    """Le modele Whisper est-il deja sur le disque ? Sans reseau."""
+    try:
+        from huggingface_hub import snapshot_download
+        snapshot_download(modele, local_files_only=True)
+    except Exception:  # absent, cache incomplet, ou huggingface_hub manquant
+        return False
+    return True
+
+
+def preparer_whisper(modele: str = MODELE_DEFAUT) -> str:
+    """Telecharge le modele Whisper s'il manque (environ 3 Go, progression affichee) et
+    renvoie son dossier. Le meme cache sert ensuite a mlx-whisper, hors ligne."""
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as e:
+        raise ErreurTranscription("huggingface_hub est absent : réinstaller l'outil.") from e
+    try:
+        return snapshot_download(modele)
+    except Exception as e:  # reseau, disque plein, depot indisponible
+        raise ErreurTranscription(f"téléchargement du modèle Whisper impossible : {e}") from e
+
+
 def transcrire(wav: str, modele: str = MODELE_DEFAUT, langue: str = LANGUE_DEFAUT) -> list[Segment]:
     """Segments de texte d'un WAV 16 kHz mono.
 

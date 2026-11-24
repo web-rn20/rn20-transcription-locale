@@ -25,13 +25,15 @@ uv tool install git+https://github.com/web-rn20/rn20-transcription-locale
 transcription-locale raccourci
 ```
 
+La troisième commande télécharge aussi les modèles (environ 3 Go, une fois), pour que la première réunion se transcrive tout de suite. Au premier clic sur Réunion, un essai de 10 secondes vérifie que le son de l'ordinateur et le micro arrivent bien. `transcription-locale verifier` fait le point sur les prérequis et dit comment réparer ce qui manque.
+
 Pour un fichier déjà enregistré : `transcription-locale transcrire entretien.m4a`.
 
 ## Installation
 
 L'outil demande un Mac Apple Silicon (M1 ou plus récent), Python 3.10 ou plus récent et ffmpeg, installés par les deux premières commandes de l'« En bref ». L'icône Réunion demande en plus macOS 15 et les outils de développement d'Apple, qui compilent sa petite application.
 
-`pipx install git+https://github.com/web-rn20/rn20-transcription-locale` fonctionne aussi. Les modèles de séparation des voix (environ 110 Mo) peuvent être préparés à l'avance avec `transcription-locale modeles`. Le modèle de transcription Whisper large-v3 pèse environ 3 Go et se télécharge à la première transcription.
+`pipx install git+https://github.com/web-rn20/rn20-transcription-locale` fonctionne aussi. Le modèle de transcription Whisper large-v3 (environ 3 Go) et les modèles de séparation des voix (environ 110 Mo) se téléchargent une fois : avec `transcription-locale modeles`, avec `raccourci` (sauf `--sans-modeles`), ou sinon à la première transcription. `transcription-locale verifier` liste ce qui est en place et la commande qui répare le reste.
 
 ## Enregistrer une réunion en un clic
 
@@ -45,7 +47,7 @@ transcription-locale raccourci
 
 La commande pose l'application `~/Applications/Réunion.app` dans le Dock. `--sans-dock` crée l'application sans l'épingler. C'est une petite application native, compilée sur le Mac à partir de [`Reunion.swift`](transcription_locale/ressources/Reunion.swift), un seul fichier lisible. Il faut pour cela les outils de développement d'Apple : si `raccourci` signale que le compilateur Swift manque, lancer `xcode-select --install`, puis relancer `raccourci`. L'application ne fait que deux choses : lancer `transcription-locale reunion` au clic, et afficher les notifications de Réunion avec son icône. À la première notification, macOS demande d'autoriser celles de Réunion ; si cette demande disparaît sans réponse, les autoriser dans Réglages > Notifications > Réunion. Tant qu'elles ne sont pas autorisées, les notifications s'affichent quand même, avec l'icône de script.
 
-Au premier clic, macOS demande l'autorisation d'enregistrer l'écran et l'audio système, puis le micro. Si la demande n'apparaît pas, le badge gris de la barre des menus propose « Ouvrir les Réglages » : cocher Réunion dans « Enregistrement de l'écran et des sons du système », puis recliquer sur Réunion dans le Dock. L'autorisation se donne une fois par Mac. macOS la rattache à la signature de l'application : `raccourci` ne refait donc jamais une application déjà en place, et les mises à jour de l'outil ne la touchent pas. `--reconstruire` force sa recréation, au prix d'une nouvelle autorisation. Seule exception : l'ancienne application AppleScript des versions 0.2 et 0.3 est remplacée une fois par l'application native, et l'autorisation est alors à redonner.
+Au tout premier clic, le badge accueille avec un essai de 10 secondes : un son joue sur le Mac pendant qu'on se tait, puis on parle. L'essai dit si le son de l'ordinateur et le micro sont bien captés, et quoi régler sinon ; il est effacé aussitôt mesuré. On peut le refaire depuis le menu du badge vert ou gris. Au premier enregistrement, macOS demande l'autorisation d'enregistrer l'écran et l'audio système, puis le micro. S'il faut passer par les Réglages, Réunion les ouvre au bon endroit et attend : dès que Réunion y est activé, l'enregistrement démarre tout seul, sans recliquer. L'autorisation se donne une fois par Mac. macOS la rattache à la signature de l'application : `raccourci` ne refait donc jamais une application déjà en place, et les mises à jour de l'outil ne la touchent pas. `--reconstruire` force sa recréation, au prix d'une nouvelle autorisation. Seule exception : l'ancienne application AppleScript des versions 0.2 et 0.3 est remplacée une fois par l'application native, et l'autorisation est alors à redonner.
 
 Pendant la réunion, un badge dans la barre des menus montre où l'on en est :
 

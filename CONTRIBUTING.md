@@ -17,6 +17,7 @@ Merci de votre intérêt. Le projet est en cours de développement : une issue a
 | `transcription_locale/enregistreur.py` | Enregistreur ScreenCaptureKit, badge et menu de la barre des menus (PyObjC, macOS seulement) |
 | `transcription_locale/badge.py` | Dessin du badge de la barre des menus |
 | `transcription_locale/ressources/Reunion.swift` | Application Réunion du Dock : lance la bascule, affiche les notifications. Compilée sur chaque Mac par `raccourci` |
+| `transcription_locale/verification.py` | Commande `verifier` : prérequis constatés, sans rien installer, avec le remède de chacun |
 | `transcription_locale/mises_a_jour.py` | Mise à jour au clic, optionnelle : lecture de la dernière release, installation (sans PyObjC) |
 | `SKILL.md` | Instructions du skill Claude Code |
 | `site/` | Page de présentation (HTML et CSS écrits à la main, publiée par `.github/workflows/site.yml` sur GitHub Pages), et ses images avec leurs crédits |
