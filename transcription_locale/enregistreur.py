@@ -572,8 +572,18 @@ class Enregistreur(rumps.App):
         log("essai :", "réussi" if ok else "à corriger", "|", " ".join(lignes))
         self.essai_ok, self.essai_lignes = ok, lignes
         self.changer("essai_fini")
-        reunion.notifier("Essai réussi : le son de l'ordinateur et le micro arrivent bien."
-                         if ok else "Essai : quelque chose manque, le menu du badge dit quoi.")
+        choix = fenetre(
+            "Essai réussi" if ok else "Essai : un réglage à faire",
+            "\n\n".join(lignes) + ("\n\nRéunion est prêt : un clic dans le Dock lance "
+                                    "l'enregistrement de votre prochaine visio." if ok else ""),
+            ["Fermer", "Refaire l'essai", "Enregistrer une réunion"] if ok
+            else ["Refaire l'essai", "Fermer"])
+        if (ok and choix == 1) or (not ok and choix == 0):
+            self.lancer_essai()
+        elif ok and choix == 2:
+            self.lancer_reunion()
+        else:
+            self.fermer()
 
     def journal_transcription(self) -> pathlib.Path:
         return reunion.dossier_journaux() / f"{self.video.stem}.log"
@@ -593,10 +603,28 @@ class Enregistreur(rumps.App):
     # --- nouveau clic sur l'icone du Dock ---------------------------------------------------
 
     def accueillir(self) -> None:
+        """Premier lancement : une fenetre au centre de l'ecran, plus visible que le menu du
+        badge. Le badge jaune garde les memes choix si on la ferme sans repondre."""
         log("premier lancement : accueil")
         self.changer("bienvenue")
-        reunion.notifier("Bienvenue dans Réunion : le menu du badge jaune, en haut de l'écran, "
-                         "propose un essai de 10 secondes.")
+        choix = fenetre(
+            "Bienvenue dans Réunion",
+            "Un clic sur Réunion dans le Dock enregistre la visio : le son de l'ordinateur "
+            "(les autres participants) et votre micro (vous). Un second clic l'arrête et lance "
+            "la transcription, sur ce Mac. Rien ne part en ligne.\n\n"
+            "Commencez par un essai de 10 secondes : un son joue sur le Mac pendant que vous "
+            "vous taisez, puis vous parlez. L'essai vérifie que les deux arrivent bien, et il "
+            "est effacé aussitôt.\n\n"
+            "macOS va demander l'autorisation d'enregistrer l'écran et le son, puis le micro : "
+            "acceptez.",
+            ["Faire l'essai de 10 secondes", "Enregistrer une réunion", "Plus tard"])
+        if choix == 0:
+            self.lancer_essai()
+        elif choix == 1:
+            self.lancer_reunion()
+        else:
+            marquer_bienvenue()
+            self.fermer()
 
     def signal_dock(self) -> None:
         log("clic sur l'icône du Dock, état :", self.etat)
@@ -622,6 +650,24 @@ class Enregistreur(rumps.App):
             self.fermer()
         else:
             reunion.notifier(messages[self.etat])
+
+
+def fenetre(titre: str, texte: str, boutons: list[str]) -> int:
+    """Fenetre de dialogue de macOS, au premier plan, avec l'icone de Reunion. Renvoie le
+    rang du bouton choisi (0 pour le premier, le bouton par defaut)."""
+    from importlib.resources import as_file, files
+
+    AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    alerte = AppKit.NSAlert.alloc().init()
+    alerte.setMessageText_(titre)
+    alerte.setInformativeText_(texte)
+    for bouton in boutons:
+        alerte.addButtonWithTitle_(bouton)
+    with as_file(files("transcription_locale").joinpath("ressources", "reunion.icns")) as icone:
+        image = AppKit.NSImage.alloc().initWithContentsOfFile_(str(icone))
+        if image is not None:
+            alerte.setIcon_(image)
+    return int(alerte.runModal()) - AppKit.NSAlertFirstButtonReturn
 
 
 def marquer_bienvenue() -> None:
