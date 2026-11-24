@@ -65,7 +65,7 @@ Pendant la réunion, un badge dans la barre des menus montre où l'on en est :
 |---|---|---|
 | Jaune | Préparation, puis transcription | Durée écoulée, dossier des réunions |
 | Rouge, avec la durée et un carré stop | Enregistrement en cours | Durée, rappel de prévenir les participants, « Arrêter et transcrire » |
-| Vert | Transcription prête | Ouvrir la transcription, l'afficher dans le Finder, fermer |
+| Vert | Transcription prête ; le Finder montre le texte, et le badge s'efface seul au bout d'une minute (il reste tant qu'une mise à jour est proposée) | Ouvrir la transcription, l'afficher dans le Finder, fermer |
 | Gris | Problème | Explication, Réglages si l'autorisation manque, journal |
 
 Un clic sur Réunion dans le Dock fait la même chose que le badge : il démarre, arrête, ou, une fois la transcription prête, lance un nouvel enregistrement. Une notification signale le démarrage, l'arrêt et la fin de la transcription.

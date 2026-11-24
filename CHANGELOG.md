@@ -2,6 +2,10 @@
 
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/). Tant qu'il reste en 0.x, les options et le format des fichiers produits peuvent changer d'une version à l'autre.
 
+## 0.4.1 (2026-11-24)
+
+- Le badge vert s'efface seul une minute après la transcription, et le Finder montre le texte dès qu'il est prêt. Il reste affiché tant qu'une mise à jour est proposée, son menu étant le seul endroit où l'installer.
+
 ## 0.4.0 (2026-11-24)
 
 - L'application Réunion du Dock devient une petite application native (`Reunion.swift`, compilée sur le Mac par `raccourci`) : les notifications portent l'icône de Réunion au lieu de l'icône de script. L'ancienne application AppleScript est remplacée une fois : relancer `transcription-locale raccourci`, puis redonner l'autorisation d'enregistrer l'écran et accepter les notifications de Réunion. Demande les outils de développement d'Apple (`xcode-select --install`).
