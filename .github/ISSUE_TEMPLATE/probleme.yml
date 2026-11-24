@@ -1,0 +1,39 @@
+name: Problème
+description: Quelque chose ne marche pas comme prévu
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de prendre le temps de signaler un problème.
+        **Ne joignez jamais d'enregistrement, de transcription ni d'extrait de réunion**, même court : ils restent sur votre Mac. Une faille de sécurité se signale en privé, voir [SECURITY.md](https://github.com/web-rn20/rn20-transcription-locale/blob/main/SECURITY.md).
+  - type: textarea
+    id: constat
+    attributes:
+      label: Ce qui se passe
+      description: Ce que vous avez fait, ce que vous attendiez, ce qui s'est passé.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version de l'outil
+      description: Sortie de `transcription-locale --version`
+      placeholder: transcription-locale 0.4.1
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: Version de macOS et modèle de Mac
+      placeholder: macOS 15.4, MacBook Air M2
+    validations:
+      required: true
+  - type: textarea
+    id: journal
+    attributes:
+      label: Extrait du journal
+      description: |
+        Pour Réunion : les dernières lignes de `~/Library/Logs/transcription-locale/reunion.log`. Pour une transcription : le message d'erreur affiché.
+        Relisez-le avant de l'envoyer, il sera public : remplacez `/Users/votre-compte` par `~` (le nom de votre compte macOS apparaît dans les erreurs Python), et retirez tout nom de fichier ou de personne que vous ne voulez pas rendre public.
+      render: text

@@ -7,43 +7,29 @@
 
 Un outil en ligne de commande qui transcrit des enregistrements en français et sépare les intervenants, entièrement sur un Mac Apple Silicon. L'audio ne quitte pas la machine. Il n'y a ni compte à créer ni clé d'API, et seuls les modèles sont téléchargés, une fois, au premier lancement.
 
-L'outil est né pour transcrire une journée de conférences, environ cinq heures d'audio prises avec des micros-cravates et un enregistreur de salle. Il sert aussi pour des entretiens et des réunions.
+L'outil est né pour transcrire une journée de conférences, environ cinq heures d'audio prises avec des micros-cravates et un enregistreur de salle. Il sert aussi pour des entretiens, et pour garder le compte rendu d'une visio dont on n'est pas l'organisateur.
 
 > Projet en cours de développement. Les options et le format des fichiers produits peuvent encore changer entre deux versions. Les retours sont bienvenus dans les [issues](https://github.com/web-rn20/rn20-transcription-locale/issues).
 
-## Installation
+## En bref
 
-L'outil demande un Mac Apple Silicon (M1 ou plus récent), Python 3.10 ou plus récent et ffmpeg.
+![Le badge Réunion dans la barre des menus : jaune en préparation ou en transcription, rouge avec la durée pendant l'enregistrement, vert quand la transcription est prête, gris en cas de problème](site/pilule.svg)
+
+Sur un Mac Apple Silicon avec macOS 15 ou plus récent, [Homebrew](https://brew.sh), [uv](https://docs.astral.sh/uv/) et les outils de développement d'Apple (`xcode-select --install` s'ils manquent), trois commandes posent une icône Réunion dans le Dock. Un clic enregistre la visio en cours, un second l'arrête et lance la transcription. Le texte arrive dans `~/Movies/Reunions`, avec une notification.
 
 ```sh
 brew install ffmpeg
 uv tool install git+https://github.com/web-rn20/rn20-transcription-locale
+transcription-locale raccourci
 ```
+
+Pour un fichier déjà enregistré : `transcription-locale transcrire entretien.m4a`.
+
+## Installation
+
+L'outil demande un Mac Apple Silicon (M1 ou plus récent), Python 3.10 ou plus récent et ffmpeg, installés par les deux premières commandes de l'« En bref ». L'icône Réunion demande en plus macOS 15 et les outils de développement d'Apple, qui compilent sa petite application.
 
 `pipx install git+https://github.com/web-rn20/rn20-transcription-locale` fonctionne aussi. Les modèles de séparation des voix (environ 110 Mo) peuvent être préparés à l'avance avec `transcription-locale modeles`. Le modèle de transcription Whisper large-v3 pèse environ 3 Go et se télécharge à la première transcription.
-
-## Utilisation
-
-```sh
-transcription-locale transcrire entretien.m4a
-```
-
-La commande écrit ses fichiers à côté de l'enregistrement.
-
-| Fichier | Contenu |
-|---|---|
-| `entretien.txt` | Le texte par tours de parole, avec l'heure de chaque prise de parole |
-| `entretien.srt` | Des sous-titres, un par segment, préfixés du locuteur |
-| `entretien.json` | Les segments avec leurs horaires et leur locuteur, pour un autre programme |
-| `entretien.16k.wav` et `entretien.segments.json` | L'audio converti et le texte brut, gardés pour recalculer les locuteurs sans retranscrire |
-
-Certains enregistreurs coupent une longue session en plusieurs fichiers. On les donne dans l'ordre, et `-o` fixe le nom des fichiers produits :
-
-```sh
-transcription-locale transcrire PARTIE1.WAV PARTIE2.WAV PARTIE3.WAV -o conference
-```
-
-`--sans-locuteurs` donne le texte seul, et `--langue en` transcrit un enregistrement en anglais.
 
 ## Enregistrer une réunion en un clic
 
@@ -103,6 +89,29 @@ Une fois activée, Réunion demande au plus une fois par jour à l'API publique 
 
 Ce que ce choix suppose : l'installation suit l'étiquette de version publiée sur GitHub (`v0.3.0` par exemple). Les étiquettes `v*` sont protégées sur le dépôt, seuls ses administrateurs peuvent les créer ou les déplacer. Activer l'option revient donc à faire confiance au dépôt et au compte GitHub qui le publie, comme pour une installation à la main ; une étiquette déplacée par un tiers qui aurait pris la main sur le dépôt s'installerait au clic suivant. Sans cette confiance, garder l'option désactivée et installer à la main après avoir lu la release.
 
+## Transcrire un fichier
+
+```sh
+transcription-locale transcrire entretien.m4a
+```
+
+La commande écrit ses fichiers à côté de l'enregistrement.
+
+| Fichier | Contenu |
+|---|---|
+| `entretien.txt` | Le texte par tours de parole, avec l'heure de chaque prise de parole |
+| `entretien.srt` | Des sous-titres, un par segment, préfixés du locuteur |
+| `entretien.json` | Les segments avec leurs horaires et leur locuteur, pour un autre programme |
+| `entretien.16k.wav` et `entretien.segments.json` | L'audio converti et le texte brut, gardés pour recalculer les locuteurs sans retranscrire |
+
+Certains enregistreurs coupent une longue session en plusieurs fichiers. On les donne dans l'ordre, et `-o` fixe le nom des fichiers produits :
+
+```sh
+transcription-locale transcrire PARTIE1.WAV PARTIE2.WAV PARTIE3.WAV -o conference
+```
+
+`--sans-locuteurs` donne le texte seul, et `--langue en` transcrit un enregistrement en anglais.
+
 ## Régler la séparation des voix
 
 La séparation repose sur un seuil, la distance entre deux empreintes vocales au-delà de laquelle on considère qu'il s'agit de deux personnes. Un seuil bas éclate une même personne en plusieurs voix ; un seuil haut finit par fondre deux personnes en une. Le bon réglage dépend d'abord du micro.
@@ -145,6 +154,18 @@ git clone https://github.com/web-rn20/rn20-transcription-locale.git ~/.claude/sk
 | Empreinte vocale | [NVIDIA NeMo TitaNet large](https://huggingface.co/nvidia/speakerverification_en_titanet_large), export ONNX de sherpa-onnx | CC-BY-4.0 |
 
 Les modèles ne sont pas inclus dans ce dépôt. Les deux modèles de séparation des voix sont téléchargés depuis les publications de sherpa-onnx sur GitHub et vérifiés par leur empreinte SHA-256 avant usage. Ils sont rangés dans `~/.cache/rn20-transcription-locale`, ou dans le dossier indiqué par la variable `TRANSCRIPTION_LOCALE_MODELES`. Le code s'appuie sur [mlx-whisper](https://github.com/ml-explore/mlx-examples) (MIT), sherpa-onnx (Apache-2.0) et NumPy (BSD). L'enregistrement des réunions s'appuie sur [PyObjC](https://github.com/ronaldoussoren/pyobjc) (MIT) et [rumps](https://github.com/jaredks/rumps) (BSD). Il appelle [ffmpeg](https://ffmpeg.org) comme programme externe, sans l'embarquer.
+
+## Désinstaller
+
+```sh
+uv tool uninstall rn20-transcription-locale
+rm -rf ~/Applications/Réunion.app
+rm -rf ~/Library/Application\ Support/transcription-locale ~/Library/Logs/transcription-locale
+rm -rf ~/.cache/rn20-transcription-locale                          # modèles de séparation des voix
+rm -rf ~/.cache/huggingface/hub/models--mlx-community--whisper-large-v3-mlx  # modèle Whisper, 3 Go
+```
+
+Restent à retirer à la main : l'icône du Dock (clic droit, Options, Supprimer du Dock), et la ligne Réunion dans Réglages > Confidentialité et sécurité > Enregistrement de l'écran et audio système, ainsi que dans Réglages > Notifications. Les enregistrements et leurs transcriptions, dans `~/Movies/Reunions`, ne sont jamais supprimés par l'outil.
 
 ## Contribuer
 
