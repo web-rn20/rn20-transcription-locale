@@ -9,6 +9,8 @@ Un outil en ligne de commande qui transcrit des enregistrements en français et 
 
 L'outil est né pour transcrire une journée de conférences, environ cinq heures d'audio prises avec des micros-cravates et un enregistreur de salle. Il sert aussi pour des entretiens, et pour garder le compte rendu d'une visio dont on n'est pas l'organisateur.
 
+Présentation en une page, avec un essai du badge : https://web-rn20.github.io/rn20-transcription-locale/
+
 > Projet en cours de développement. Les options et le format des fichiers produits peuvent encore changer entre deux versions. Les retours sont bienvenus dans les [issues](https://github.com/web-rn20/rn20-transcription-locale/issues).
 
 ## En bref
