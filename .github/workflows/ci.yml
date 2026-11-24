@@ -40,6 +40,8 @@ jobs:
           python -c "import mlx_whisper, sherpa_onnx, numpy"
           python -c "import transcription_locale.enregistreur, transcription_locale.badge"
       - name: Compiler l'application Réunion
-        run: xcrun swiftc -O -target arm64-apple-macos15.0 -o "$RUNNER_TEMP/Reunion" transcription_locale/ressources/Reunion.swift
+        # la commande meme de raccourci, cible comprise (MACOS_MINIMUM)
+        run: |
+          python -c "import subprocess, sys; from transcription_locale import reunion; sys.exit(subprocess.run(reunion.commande_compilation('transcription_locale/ressources/Reunion.swift', '$RUNNER_TEMP/Reunion')).returncode)"
       - name: Télécharger et vérifier les modèles de séparation des voix
         run: transcription-locale modeles

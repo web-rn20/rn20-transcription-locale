@@ -122,6 +122,68 @@ class Application(unittest.TestCase):
         self.assertIn("removeItem", source)  # chaque message lu est efface
 
 
+class Construction(unittest.TestCase):
+    """Remplacement de l'application : jamais d'utilisateur laisse sans Reunion.app."""
+
+    def setUp(self):
+        self.dossier = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.dossier, ignore_errors=True))
+        self.app = self.dossier / "Réunion.app"
+        (self.app / "Contents").mkdir(parents=True)
+        (self.app / "Contents" / "ancienne").write_text("applet")
+
+    def restes(self):
+        return sorted(p.name for p in self.dossier.iterdir())
+
+    def test_remplacement(self):
+        chantier = self.dossier / ".Réunion.app.construction"
+        (chantier / "Contents").mkdir(parents=True)
+        (chantier / "Contents" / "nouvelle").write_text("native")
+        reunion.mettre_en_place(chantier, self.app)
+        self.assertTrue((self.app / "Contents" / "nouvelle").is_file())
+        self.assertEqual(self.restes(), ["Réunion.app"])
+
+    def test_remplacement_rate_ancienne_application_remise(self):
+        chantier = self.dossier / ".Réunion.app.construction"
+        chantier.mkdir()
+        vrai = os.rename
+
+        def rename(source, cible):
+            if pathlib.Path(source) == chantier:
+                raise OSError("disque plein")
+            return vrai(source, cible)
+
+        with mock.patch.object(reunion.os, "rename", side_effect=rename), \
+                self.assertRaises(reunion.ErreurReunion):
+            reunion.mettre_en_place(chantier, self.app)
+        self.assertTrue((self.app / "Contents" / "ancienne").is_file())
+
+    def test_compilation_ratee_ancienne_application_intacte(self):
+        echec = mock.Mock(returncode=1, stderr="error: boom")
+        with mock.patch.object(reunion, "verifier_swiftc"), \
+                mock.patch.object(reunion.subprocess, "run", return_value=echec), \
+                self.assertRaises(reunion.ErreurReunion) as erreur:
+            reunion.creer_app(self.app)
+        self.assertIn("boom", str(erreur.exception))
+        self.assertTrue((self.app / "Contents" / "ancienne").is_file())
+        self.assertEqual(self.restes(), ["Réunion.app"])
+
+    def test_construction_complete(self):
+        def run(commande, **_):
+            if commande[:2] == ["xcrun", "swiftc"]:
+                pathlib.Path(commande[commande.index("-o") + 1]).write_text("binaire")
+            return mock.Mock(returncode=0, stderr="")
+
+        with mock.patch.object(reunion, "verifier_swiftc"), \
+                mock.patch.object(reunion.subprocess, "run", side_effect=run):
+            reunion.creer_app(self.app)
+        self.assertTrue(reunion.app_en_place(self.app))
+        self.assertTrue((self.app / "Contents" / "MacOS" / reunion.EXECUTABLE).is_file())
+        self.assertEqual((self.app / "Contents" / "Resources" / "AppIcon.icns").read_bytes()[:4],
+                         b"icns")
+        self.assertEqual(self.restes(), ["Réunion.app"])
+
+
 class Notifications(unittest.TestCase):
     def setUp(self):
         self.dossier = pathlib.Path(tempfile.mkdtemp())
@@ -157,6 +219,20 @@ class Notifications(unittest.TestCase):
             reunion.notifier("Bonjour")
         self.assertEqual(run.call_args.args[0][0], "osascript")
         self.assertEqual(self.messages(), [])
+
+    def test_message_coupe_avant_la_limite_de_l_application(self):
+        self.assertEqual(reunion.message_court("court"), "court")
+        long = reunion.message_court("é" * 5000)
+        self.assertEqual(len(long), reunion.LONGUEUR_MESSAGE)
+        self.assertLessEqual(len(long.encode("utf-8")), 4096)
+
+    def test_l_application_lit_le_meme_dossier(self):
+        from importlib.resources import files
+
+        source = files("transcription_locale").joinpath("ressources", "Reunion.swift").read_text(
+            encoding="utf-8")
+        self.assertIn('"Library/Application Support/transcription-locale/notifications"', source)
+        self.assertEqual(reunion.dossier_messages().name, "notifications")
 
     def test_messages_oublies_effaces_apres_une_heure(self):
         reunion.dossier_messages().mkdir(parents=True)

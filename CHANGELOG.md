@@ -2,9 +2,10 @@
 
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/). Tant qu'il reste en 0.x, les options et le format des fichiers produits peuvent changer d'une version à l'autre.
 
-## Non publié
+## 0.4.0 (2026-11-24)
 
 - L'application Réunion du Dock devient une petite application native (`Reunion.swift`, compilée sur le Mac par `raccourci`) : les notifications portent l'icône de Réunion au lieu de l'icône de script. L'ancienne application AppleScript est remplacée une fois : relancer `transcription-locale raccourci`, puis redonner l'autorisation d'enregistrer l'écran et accepter les notifications de Réunion. Demande les outils de développement d'Apple (`xcode-select --install`).
+- L'application Réunion ne se laisse jamais à moitié remplacée : l'ancienne est remise en place si le remplacement échoue. Une notification ne peut plus démarrer ni arrêter un enregistrement, et un message arrivé pendant la fermeture de l'application n'est plus perdu. L'application ne lit que son dossier de messages, ne reste jamais bloquée en arrière-plan, et note dans le journal système pourquoi ses notifications sont refusées.
 
 ## 0.3.0 (2026-11-24)
 
