@@ -40,6 +40,7 @@ a:hover { text-decoration: underline; }
 :focus-visible { outline: 2px solid var(--bleu-bouton); outline-offset: 3px; border-radius: 4px; }
 h1, h2, h3, p { margin: 0; }
 code { font: 0.9em var(--mono); letter-spacing: 0; }
+html:not(.js) .bureau button, html:not(.js) #copier { display: none; }
 .cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* navigation, fine et translucide comme celle d'Apple */
@@ -190,6 +191,7 @@ section { padding: 100px 0; }
 .terminal .invite { color: #86868b; user-select: none; }
 .installer-pied { margin-top: 28px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .copie-etat { font-size: 17px; }
+.copie-etat:empty { display: none; }
 
 /* pied de page, petit et gris */
 .pied { background: var(--fond-gris); color: var(--gris); font-size: 13px; line-height: 1.33; letter-spacing: -0.01em; padding: 20px 0 32px; }
@@ -210,6 +212,8 @@ section { padding: 100px 0; }
 
 @media (max-width: 833px) {
   section { padding: 72px 0; }
+  .bureau { aspect-ratio: auto; min-height: 500px; }
+  .fenetre-texte { left: 12px; width: min(340px, calc(100% - 24px)); }
   .etapes { grid-template-columns: 1fr; }
   .chiffres, .etats { grid-template-columns: 1fr 1fr; }
   .nav-interieur { gap: 18px; }
@@ -217,10 +221,10 @@ section { padding: 100px 0; }
 }
 @media (max-width: 520px) {
   .ouverture .sous-titre { font-size: 28px; }
-  .bureau { aspect-ratio: auto; min-height: 460px; border-radius: 14px 14px 0 0; }
+  .bureau { min-height: 520px; border-radius: 14px 14px 0 0; }
   .barre .masque { display: none; }
   .menu { right: 8px; left: 8px; width: auto; }
-  .fenetre-texte { left: 12px; bottom: 80px; width: calc(100% - 24px); }
+  .fenetre-texte { bottom: 80px; width: calc(100% - 24px); }
   .etats { grid-template-columns: 1fr; }
 }
 </style>
@@ -257,7 +261,8 @@ section { padding: 100px 0; }
       </button>
       <span>mar. 14:02</span>
     </div>
-    <div class="menu" id="menu-essai" aria-live="polite">
+    <p class="cache" id="annonce-essai" aria-live="polite"></p>
+    <div class="menu" id="menu-essai">
       <p class="fort">Essayez le badge</p>
       <p>Il démarre un enregistrement simulé, dans la page.</p>
       <div class="separateur"></div>
@@ -307,7 +312,7 @@ section { padding: 100px 0; }
   </div>
   <div class="chiffres centre" data-apparait>
     <div class="chiffre"><strong>6 min</strong><span>pour transcrire une heure de réunion, sur un MacBook Pro M5 Pro.</span></div>
-    <div class="chiffre"><strong>0 octet</strong><span>envoyé en ligne pendant l'enregistrement et la transcription.</span></div>
+    <div class="chiffre"><strong>0 fichier</strong><span>audio ou texte envoyé en ligne. Seuls les modèles se téléchargent, une fois.</span></div>
     <div class="chiffre"><strong>3 Go</strong><span>pour le modèle Whisper, téléchargé une fois et vérifié.</span></div>
     <div class="chiffre"><strong>0 €</strong><span>logiciel libre sous licence MIT, sans compte ni clé d'API.</span></div>
   </div>
@@ -344,7 +349,7 @@ section { padding: 100px 0; }
   </div>
   <div class="questions">
     <details><summary>Est-ce que quelque chose part en ligne ?</summary>
-      <p>Ni l'audio ni le texte. Les modèles se téléchargent une fois. Si vous activez la mise à jour au clic, Réunion lit une fois par jour la dernière version publiée sur GitHub, sans rien envoyer.</p></details>
+      <p>Ni l'audio ni le texte. Les modèles se téléchargent une fois. Si vous activez la mise à jour au clic, Réunion lit une fois par jour la dernière version publiée sur GitHub, sans envoyer aucune donnée personnelle.</p></details>
     <details><summary>Les participants sont-ils prévenus ?</summary>
       <p>Non. Un enregistrement local ne s'annonce à personne. Prévenez-les en début de réunion ; le menu du badge vous le rappelle.</p></details>
     <details><summary>Quelles autorisations faut-il donner ?</summary>
@@ -361,7 +366,7 @@ section { padding: 100px 0; }
 <section class="gris" id="installer" aria-labelledby="titre-installer">
   <div class="centre" data-apparait>
     <h2 class="titre-section" id="titre-installer">Trois commandes.</h2>
-    <p class="chapeau">À coller dans le Terminal. La dernière pose Réunion dans le Dock et télécharge les modèles. Il faut <a href="https://brew.sh">Homebrew</a> et <a href="https://docs.astral.sh/uv/">uv</a>.</p>
+    <p class="chapeau">À coller dans le Terminal. La dernière pose Réunion dans le Dock et télécharge les modèles. Il faut <a href="https://brew.sh">Homebrew</a>, <a href="https://docs.astral.sh/uv/">uv</a> et les outils de développement d'Apple (<code>xcode-select --install</code>).</p>
   </div>
   <div class="terminal" data-ui data-apparait>
     <div class="terminal-barre" aria-hidden="true"><i></i><i></i><i></i></div>
@@ -371,7 +376,8 @@ section { padding: 100px 0; }
   </div>
   <div class="installer-pied">
     <button class="bouton" type="button" id="copier">Copier les commandes</button>
-    <span class="copie-etat" id="copie-etat" aria-live="polite"><a class="lien-fleche" href="https://github.com/web-rn20/rn20-transcription-locale#readme">Guide complet et désinstallation</a></span>
+    <span class="copie-etat" id="copie-etat" aria-live="polite"></span>
+    <a class="lien-fleche" href="https://github.com/web-rn20/rn20-transcription-locale#readme">Guide complet et désinstallation</a>
   </div>
 </section>
 </main>
@@ -408,45 +414,69 @@ section { padding: 100px 0; }
   }), 2500));
 })();
 
-// L'essai de l'ouverture : un enregistrement simule, avec les vrais textes du menu de Reunion.
+// L'essai de l'ouverture : un enregistrement simule, avec les textes du menu de Reunion.
 (() => {
-  const pilule = document.getElementById('pilule');
+  const pilule = document.getElementById('pilule'), dock = document.getElementById('dock-reunion');
   const menu = document.getElementById('menu-essai'), texte = document.getElementById('texte-essai');
+  const annonce = document.getElementById('annonce-essai');
   const duree = pilule.querySelector('.duree'), stop = pilule.querySelector('.stop');
-  let etat = 'repos', debut = 0, minuteur = null;
-  const chrono = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  const peindre = (couleur, sombre) => {
+  let etat = 'repos', debut = 0, minuteur = null, ligneDuree = null;
+  // memes formats que reunion.chrono et reunion.duree_lisible
+  const deux = (n) => String(n).padStart(2, '0');
+  const chrono = (s) => { const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return h ? `${h}:${deux(m)}:${deux(s % 60)}` : `${m}:${deux(s % 60)}`; };
+  const lisible = (s) => { const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return h ? `${h} h ${deux(m)} min` : `${m} min ${deux(s % 60)} s`; };
+  const ETIQUETTES = {
+    repos: 'Essayer : démarrer un enregistrement simulé',
+    preparation: "Préparation de l'enregistrement simulé",
+    enregistrement: "Arrêter l'enregistrement simulé et transcrire",
+    transcription: 'Transcription simulée en cours',
+    prete: "Recommencer l'essai",
+  };
+  const changer = (nouveau, couleur, sombre) => {
+    etat = nouveau;
     pilule.style.setProperty('--etat', `var(--${couleur})`);
     pilule.dataset.colore = sombre ? 'attente' : '';
+    pilule.setAttribute('aria-label', ETIQUETTES[nouveau]);
   };
+  // le menu est construit une fois par etat ; seule la ligne de duree change ensuite
   const poserMenu = (lignes, actions = []) => {
     menu.innerHTML = lignes.map(([t, fort]) => `<p${fort ? ' class="fort"' : ''}>${t}</p>`).join('')
       + (actions.length ? '<div class="separateur"></div>' + actions.map(([a, t]) => `<button type="button" data-action="${a}">${t}</button>`).join('') : '');
+    ligneDuree = menu.querySelector('p.fort');
+    annonce.textContent = lignes[0][0];
+  };
+  const compter = (prefixe) => {
+    clearInterval(minuteur);
+    debut = Date.now();
+    minuteur = setInterval(() => {
+      const s = Math.floor((Date.now() - debut) / 1000);
+      ligneDuree.textContent = `${prefixe} ${lisible(s)}`;
+      if (etat === 'enregistrement') duree.textContent = chrono(s);
+    }, 1000);
   };
   const demarrer = () => {
     clearInterval(minuteur);
-    etat = 'preparation'; texte.hidden = true; peindre('attente', true);
+    changer('preparation', 'attente', true); texte.hidden = true;
     poserMenu([["Préparation de l'enregistrement…", true]]);
     setTimeout(() => {
-      etat = 'enregistrement'; debut = Date.now(); peindre('enregistrement');
+      changer('enregistrement', 'enregistrement');
       duree.hidden = false; stop.hidden = false; duree.textContent = '0:00';
-      pilule.setAttribute('aria-label', "Arrêter l'enregistrement simulé et transcrire");
-      const maj = () => {
-        const s = Math.floor((Date.now() - debut) / 1000); duree.textContent = chrono(s);
-        poserMenu([[`Enregistrement en cours depuis ${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`, true],
-          ["On enregistre le son de l'ordinateur (les autres participants) et votre micro (vous). Rien ne quitte ce Mac."],
-          ['Pensez à prévenir les participants.']], [['arreter', 'Arrêter et transcrire']]);
-      };
-      maj(); minuteur = setInterval(maj, 1000);
+      poserMenu([['Enregistrement en cours depuis 0 min 00 s', true],
+        ["On enregistre le son de l'ordinateur (les autres participants) et votre micro (vous). Rien ne quitte ce Mac."],
+        ['Pensez à prévenir les participants.']], [['arreter', 'Arrêter et transcrire']]);
+      compter('Enregistrement en cours depuis');
     }, 900);
   };
   const arreter = () => {
-    clearInterval(minuteur); etat = 'transcription'; peindre('attente', true); duree.hidden = true; stop.hidden = true;
-    poserMenu([['Transcription en cours', true], ['Fichier : Reunion 2026-11-24 14-02-00.m4a'],
+    changer('transcription', 'attente', true); duree.hidden = true; stop.hidden = true;
+    poserMenu([['Transcription en cours depuis 0 min 00 s', true], ['Fichier : Reunion 2026-11-24 14-02-00.m4a'],
       ['Comptez environ un dixième de la durée de la réunion. Vous pouvez continuer à travailler, une notification suivra.']]);
+    compter('Transcription en cours depuis');
     setTimeout(() => {
-      etat = 'prete'; peindre('prete');
-      pilule.setAttribute('aria-label', "Recommencer l'essai");
+      clearInterval(minuteur);
+      changer('prete', 'prete');
       poserMenu([['Transcription prête', true], ['Reunion 2026-11-24 14-02-00.txt'], ["Ce badge s'efface seul dans une minute."]],
         [['demarrer', 'Recommencer']]);
       texte.hidden = false;
@@ -458,7 +488,6 @@ section { padding: 100px 0; }
     else if (etat === 'enregistrement') arreter();
   };
   pilule.addEventListener('click', basculer);
-  const dock = document.getElementById('dock-reunion');
   dock.addEventListener('click', () => { dock.classList.add('actif'); setTimeout(() => dock.classList.remove('actif'), 1200); basculer(); });
   menu.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-action]'); if (!b) return;
@@ -471,7 +500,7 @@ section { padding: 100px 0; }
   const bouton = document.getElementById('copier'), etat = document.getElementById('copie-etat');
   const commandes = 'brew install ffmpeg\nuv tool install git+https://github.com/web-rn20/rn20-transcription-locale\ntranscription-locale raccourci\n';
   bouton.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(commandes); bouton.textContent = 'Copiées'; etat.textContent = 'Collez-les dans le Terminal.'; }
+    try { await navigator.clipboard.writeText(commandes); etat.textContent = 'Copiées. Collez-les dans le Terminal.'; }
     catch { etat.textContent = 'Copie impossible : sélectionnez les trois lignes à la main.'; }
   });
 })();

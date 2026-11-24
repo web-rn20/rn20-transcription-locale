@@ -58,7 +58,7 @@ Elles sont vérifiées à chaque revue.
 
 ## Le site
 
-Une seule page, `site/index.html`, sans dépendance ni étape de construction, dans un style sobre : police du système, fond blanc et gris clair, un seul bleu pour les liens et les boutons ; les couleurs des états restent réservées au badge. Aucun traceur, aucun cookie, aucune ressource chargée depuis un autre site. Toute image ajoutée a une licence qui permet l'usage commercial, et son crédit figure en pied de page. Les textes du menu montrés sur la page reprennent ceux de `enregistreur.py` : les mettre à jour ensemble.
+Une seule page, `site/index.html`, sans dépendance ni étape de construction, dans un style sobre : police du système, fond blanc et gris clair, un seul bleu pour les liens et les boutons ; les couleurs des états restent réservées au badge. Aucun traceur, aucun cookie, aucune ressource chargée depuis un autre site. Toute image ajoutée a une licence qui permet l'usage commercial, et son crédit est ajouté au pied de page. Les textes du menu montrés dans l'essai simulé reprennent ceux de `enregistreur.py` (seul le menu d'accueil « Essayez le badge » est propre à la page) : les mettre à jour ensemble.
 
 ## Publier une version
 
