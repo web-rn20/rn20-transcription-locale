@@ -20,7 +20,7 @@ Merci de votre intérêt. Le projet est en cours de développement : une issue a
 | `transcription_locale/verification.py` | Commande `verifier` : prérequis constatés, sans rien installer, avec le remède de chacun |
 | `transcription_locale/mises_a_jour.py` | Mise à jour au clic, optionnelle : lecture de la dernière release, installation (sans PyObjC) |
 | `SKILL.md` | Instructions du skill Claude Code |
-| `site/` | Page de présentation (HTML et CSS écrits à la main, publiée par `.github/workflows/site.yml` sur GitHub Pages), et ses images avec leurs crédits |
+| `site/` | Page de présentation (HTML et CSS écrits à la main, publiée par `.github/workflows/site.yml` sur GitHub Pages) |
 | `SECURITY.md` | Signalement privé des failles, données traitées |
 | `.github/workflows/release.yml`, `.github/scripts/notes_de_version.py` | Publication d'une release à partir d'une étiquette `vX.Y.Z` poussée depuis `main` |
 | `tests/` | Tests unitaires, sans modèle ni réseau |
@@ -58,7 +58,7 @@ Elles sont vérifiées à chaque revue.
 
 ## Le site
 
-Une seule page, `site/index.html`, sans dépendance ni étape de construction. Aucun traceur, aucun cookie, aucune ressource chargée depuis un autre site : la police est servie depuis `site/fonts/`. Toute image ajoutée a une licence qui permet l'usage commercial, et son crédit figure en pied de page. Les textes du menu montrés sur la page reprennent ceux de `enregistreur.py` : les mettre à jour ensemble.
+Une seule page, `site/index.html`, sans dépendance ni étape de construction, dans un style sobre : police du système, fond blanc et gris clair, un seul bleu pour les liens et les boutons ; les couleurs des états restent réservées au badge. Aucun traceur, aucun cookie, aucune ressource chargée depuis un autre site. Toute image ajoutée a une licence qui permet l'usage commercial, et son crédit figure en pied de page. Les textes du menu montrés sur la page reprennent ceux de `enregistreur.py` : les mettre à jour ensemble.
 
 ## Publier une version
 
